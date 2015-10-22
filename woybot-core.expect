@@ -6,6 +6,10 @@
 #
 
 set timeout 5
+set match_max 20000
+
+set user woybot
+set pass U5ZjIwYzc5OTMyNz
 
 spawn telnet nethack.csh.rit.edu
 
@@ -19,55 +23,98 @@ expect {
     "=>"
 }
 
-send "lwoybot\rU5ZjIwYzc5OTMyNz\r"
+send "l$user\r$pass\r"
 
 sleep 1
 
-expect "=>"
+expect {
+    timeout exit
+    "Logged in as: $user"
+}
 
 send "p"
 
 sleep 1
 
 expect {
-    timeout abort
+    timeout exit
     "There are some stale" {
         sleep 10
         exp_continue
     }
-    -re "--More--"
+    "Shall I pick a character's race" {
+        # wizard human male neutral
+        send "nwhmn"
+        exp_continue
+    }
+    -re "--More--" {
+        send " "
+        exp_continue
+    }
+    "to NetHack"
 }
 
-send " "
-
-expect "NetHack"
-
 # 0.1 sec delay every 1 char
-set send_slow {1 0.1}
+set send_slow {1 0.3}
 
 send -s ";.v"
 expect {
-    timeout abort
+    timeout exit
     "Unix NetHack"
 }
 
 # explore
 
-set dirs [list l k h j]
+set dirs [list l j y j u h n h k l b]
 
-while 1 {
-    set mcounter 0
+set doauto 1
+set mcounter 0
+while {$doauto == 1} {
     foreach dir $dirs {
+        send_error "XXX DIRECTION: $dir"
         set cont 1
         while {$cont == 1} {
+            # clear buffer
+            expect *
+
+            # identify the next square
             send ";$dir." 
+            set timeout 0.5
             expect {
-                -timeout 1
                 timeout {
                     set cont 0
                     incr mcounter
                 }
-                "a doorway or the floor of a room" {
+                -re "--More--" {
+                    send " "
+                    set cont 1
+                }
+                "#       iron bars or a tree" {
+                    send "$dir"
+                    set cont 1
+                    set mcounter 0
+                }
+                "+       a spellbook or a closed door (closed door)" {
+                    send "o$dir"
+                    set cont 1
+                    set mcounter 0
+                }
+                "\.       a doorway or the floor of a room" {
+                    send "$dir"
+                    set cont 1
+                    set mcounter 0
+                }
+                -re "Weak|Fainting" {
+                    # pray!
+                    send "#py"
+                }
+                "\$       " {
+                    # pick up cash
+                    send "$dir,"
+                    set mcounter 0
+                }
+                -re ":       |d       |x       " {
+                    # attack!
                     send "$dir"
                     set cont 1
                     set mcounter 0
@@ -75,8 +122,12 @@ while 1 {
             }
         }
     }
-    if { $mcounter == [llength $dirs] } {
-        send "."
+    if { $mcounter >= [llength $dirs] } {
+        send "s"
+        if { $mcounter > 1000 } {
+            # bail...
+            set doauto 0
+        }
     }
 }
 
