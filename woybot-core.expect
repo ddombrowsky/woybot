@@ -1,0 +1,85 @@
+#!/usr/bin/expect -df
+#
+# NetHack automated player
+#
+# Maybe someday it will do the extinctionist game I seek.
+#
+
+set timeout 5
+
+spawn telnet nethack.csh.rit.edu
+
+sleep 1
+
+expect {
+    timeout {
+        send_user "can't connect, must bail\n\n"
+        exit
+    }
+    "=>"
+}
+
+send "lwoybot\rU5ZjIwYzc5OTMyNz\r"
+
+sleep 1
+
+expect "=>"
+
+send "p"
+
+sleep 1
+
+expect {
+    timeout abort
+    "There are some stale" {
+        sleep 10
+        exp_continue
+    }
+    -re "--More--"
+}
+
+send " "
+
+expect "NetHack"
+
+# 0.1 sec delay every 1 char
+set send_slow {1 0.1}
+
+send -s ";.v"
+expect {
+    timeout abort
+    "Unix NetHack"
+}
+
+# explore
+
+set dirs [list l k h j]
+
+while 1 {
+    set mcounter 0
+    foreach dir $dirs {
+        set cont 1
+        while {$cont == 1} {
+            send ";$dir." 
+            expect {
+                -timeout 1
+                timeout {
+                    set cont 0
+                    incr mcounter
+                }
+                "a doorway or the floor of a room" {
+                    send "$dir"
+                    set cont 1
+                    set mcounter 0
+                }
+            }
+        }
+    }
+    if { $mcounter == [llength $dirs] } {
+        send "."
+    }
+}
+
+
+send_error "XXXXX INTERACT XXXXX"
+interact
