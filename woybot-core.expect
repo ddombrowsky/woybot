@@ -75,10 +75,20 @@ expect {
     "Unix NetHack"
 }
 
+#
+# procs
+#
+
+proc interested {} {
+    return ""
+}
+
+#
 # explore
+#
 
 #set dirs [list l j y j u h n h k l b]
-set dirs [list l j h k h k l j l j y j u h n h k l b]
+set dirs [list l j h k h k l j l j y j u k n h k l b]
 
 set doauto 1
 set idle_count 0
@@ -133,7 +143,7 @@ while {$doauto == 1} {
                     set cont 1
                     set idle_count 0
                 }
-                "(tame kitten called Mountain Lion Cat)" {
+                -re "(tame \\w+ called Mountain Lion Cat)" {
                     send "m$dir"
                     set cont 1
                     set idle_count 0
@@ -148,9 +158,12 @@ while {$doauto == 1} {
                     set cont 1
                     set idle_count 0
                 }
-                -re "%       a piece of food \\((.*)\\)" {
+                -re "%       a piece of food \\((\[^)\]+)\\)" {
                     if { $expect_out(1,string) == "corpse" } {
-                        send_error "XXX: not eating corpse!"
+                        send_error "XXX: not eating corpse!\n"
+                        send "$dir"
+                    } elseif { $expect_out(1,string) == "tin" } {
+                        send_error "XXX: not eating tin!\n"
                         send "$dir"
                     } else {
                         send_error "XXX: eating (found food)\n"
@@ -169,11 +182,24 @@ while {$doauto == 1} {
                     send "#pray\ry"
                     sleep 0.1
                     expect {
+                        -timeout 3
                         "You feel that" {
-                            send_error "XXX: done with the call"
+                            send_error "XXX: done with the call\n"
+                        }
+                        "angered" {
+                            # uh oh...
+                            sleep 2
+                            exp_continue
+                        }
+                        -re "You fry to a crisp|You die\\." {
+                            send_error "XXX: and the false god hath made us DEAD again\n"
+                            set isdead 1
+                            set cont 0
+                            set doauto 0
                         }
                         -gl "--More--" {
                             send " "
+                            sleep 1
                             exp_continue
                         }
                     }
@@ -181,43 +207,42 @@ while {$doauto == 1} {
                 "\$       " {
                     # pick up cash
                     send "$dir,"
+                    expect {
+                        "(end)" {
+                            # multiple items, choose only gold
+                            send "\$ "
+                            exp_continue
+                        }
+                        "gold pieces"
+                    }
                     set idle_count 0
                 }
-                -re ":       |d       |x       " {
-                    set monst $expect_out(0,string)
+                -re ":       |d       |x       |r       |F       " {
+                    set monst "UNKNOWN"
                     # attack!
+                    send_error "XXX: attack!"
                     send -s "$dir"
                     sleep 0.1
                     expect {
-                        "You kill the" {
+                        -re "You kill the" {
+                            send "${dir}"
+                            exp_continue
+                        }
+                        "You see here a (.*) corpse" {
+                            set monst $expect_out(0,string)
+
                             # eat the corpse
                             send_error "XXX: eating ($monst corpse)\n"
-                            send "${dir}ey"
+                            send "ey"
                         }
                     }
                     set cont 1
                     set idle_count 0
                 }
-                "You die" {
+                -re "You die\\." {
                     send_error "XXX: well look at that, DEAD again\n"
                     sleep 1
-                    set send_slow {1 1}
-                    expect {
-                        -timeout 1
-                        timeout {
-                            set cont 0
-                            set doauto 0
-                            set isdead 1
-                        }
-                        -re "--More--" {
-                            send -s " "
-                            exp_continue
-                        }
-                        "yn" {
-                            send -s "y "
-                            exp_continue
-                        }
-                    }
+                    set isdead 1
                 }
 
                 # "--More--" must come last, to avoid losing
@@ -227,10 +252,44 @@ while {$doauto == 1} {
                     set cont 1
                 }
             }
+
+            set ndir [interested]
+            if { $ndir != "" } {
+                send_error "XXX: interested in direction $ndir"
+                set dir $ndir
+            }
+
             if { $idle_count == 0 } {
                 # uncomment for human viewable run
                 #sleep 0.25
             }
+        }
+
+        if { $isdead } {
+            set deathlog [open "death.log" w]
+            puts $deathlog $expect_out(buffer)
+            set send_slow {1 2}
+            set doauto 0
+            expect {
+                -timeout 1
+                -re "--More--|(end)" {
+                    send -s " "
+                    flush stdout
+                    sleep 1
+                    puts $deathlog $expect_out(buffer)
+                    exp_continue
+                }
+                "yn" {
+                    send -s "y"
+                    flush stdout
+                    sleep 1
+                    puts $deathlog $expect_out(buffer)
+                    exp_continue
+                }
+            }
+            flush stdout
+            close $deathlog
+            break
         }
     }
     if { !$isdead && $idle_count >= [llength $dirs] } {
@@ -242,7 +301,9 @@ while {$doauto == 1} {
     }
 }
 
-if { $isdead == 0 } {
-    send_error "XXXXX INTERACT XXXXX\n"
+if { !$isdead } {
+    send_error "XXX: INTERACT\n"
     interact
 }
+
+send_error "XXX: clean exit"
