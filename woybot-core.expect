@@ -11,30 +11,38 @@ set match_max 20000
 set user woybot
 set pass U5ZjIwYzc5OTMyNz
 
-spawn telnet nethack.csh.rit.edu
+set islocal 0
+if { [lindex $argv 0] == "-l" } {
+    set islocal 1
+}
+if { $islocal == 1 } {
+    spawn nethack -u woybot
+} else {
+    spawn telnet nethack.csh.rit.edu
 
-sleep 1
+    sleep 1
 
-expect {
-    timeout {
-        send_user "can't connect, must bail\n\n"
-        exit
+    expect {
+        timeout {
+            send_user "can't connect, must bail\n\n"
+            exit
+        }
+        "=>"
     }
-    "=>"
+
+    send "l$user\r$pass\r"
+
+    sleep 1
+
+    expect {
+        timeout exit
+        "Logged in as: $user"
+    }
+
+    send "p"
+
+    sleep 1
 }
-
-send "l$user\r$pass\r"
-
-sleep 1
-
-expect {
-    timeout exit
-    "Logged in as: $user"
-}
-
-send "p"
-
-sleep 1
 
 expect {
     timeout exit
@@ -60,77 +68,181 @@ set send_slow {1 0.3}
 send -s ";.v"
 expect {
     timeout exit
+    -re "--More--" {
+        send " ;.v"
+        exp_continue
+    }
     "Unix NetHack"
 }
 
 # explore
 
-set dirs [list l j y j u h n h k l b]
+#set dirs [list l j y j u h n h k l b]
+set dirs [list l j h k h k l j l j y j u h n h k l b]
 
 set doauto 1
-set mcounter 0
+set idle_count 0
+set isdead 0
 while {$doauto == 1} {
     foreach dir $dirs {
-        send_error "XXX DIRECTION: $dir"
+        send_error "XXX DIRECTION: $dir\n"
         set cont 1
         while {$cont == 1} {
-            # clear buffer
-            expect *
-
             # identify the next square
             send ";$dir." 
             set timeout 0.5
             expect {
                 timeout {
                     set cont 0
-                    incr mcounter
-                }
-                -re "--More--" {
-                    send " "
-                    set cont 1
-                }
-                "#       iron bars or a tree" {
-                    send "$dir"
-                    set cont 1
-                    set mcounter 0
+                    incr idle_count
                 }
                 "+       a spellbook or a closed door (closed door)" {
-                    send "o$dir"
-                    set cont 1
-                    set mcounter 0
+                    send -s "o$dir"
+                    sleep 0.25
+                    expect {
+                        "This door is locked." {
+                            send \004
+                            send "$dir"
+                        }
+                        -re "The door opens|The door resists!" {
+                            send "$dir"
+                            set cont 1
+                            set idle_count 0
+                        }
+                    }
                 }
-                "\.       a doorway or the floor of a room" {
+                ".       a doorway or the floor of a room" {
                     send "$dir"
                     set cont 1
-                    set mcounter 0
+                    set idle_count 0
+                }
+                -gl "-       a wall or an open door (open door)" {
+                    # doors can only be entered orthogonally
+                    if { [lsearch [list l k j h ] $dir ] >= 0 } {
+                        send "$dir"
+                        set cont 1
+                        set idle_count 0
+                    } else {
+                        set cont 0
+                    }
+                }
+                -re "#       iron bars or a tree.*\\(corridor\\)" {
+                    # maybe sometimes travel down corridors?
+                    #send [string toupper "$dir"]
+                    send "G$dir"
+                    set cont 1
+                    set idle_count 0
+                }
+                "(tame kitten called Mountain Lion Cat)" {
+                    send "m$dir"
+                    set cont 1
+                    set idle_count 0
+                }
+                "<       a staircase up or a ladder up (staircase up)" {
+                    send "$dir"
+                    set cont 1
+                    set idle_count 0
+                }
+                ">       a staircase up or a ladder down (staircase down)" {
+                    send "$dir"
+                    set cont 1
+                    set idle_count 0
+                }
+                -re "%       a piece of food \\((.*)\\)" {
+                    if { $expect_out(1,string) == "corpse" } {
+                        send_error "XXX: not eating corpse!"
+                        send "$dir"
+                    } else {
+                        send_error "XXX: eating (found food)\n"
+                        send "${dir}ey"
+                    }
+                }
+                -re "\\(       a useful item.*\\(large box\\)" {
+                    send "$dir"
+                    set cont 1
+                    set idle_count 0
+
                 }
                 -re "Weak|Fainting" {
-                    # pray!
-                    send "#py"
+                    # place a call!
+                    #send "#py"
+                    send "#pray\ry"
+                    sleep 0.1
+                    expect {
+                        "You feel that" {
+                            send_error "XXX: done with the call"
+                        }
+                        -gl "--More--" {
+                            send " "
+                            exp_continue
+                        }
+                    }
                 }
                 "\$       " {
                     # pick up cash
                     send "$dir,"
-                    set mcounter 0
+                    set idle_count 0
                 }
                 -re ":       |d       |x       " {
+                    set monst $expect_out(0,string)
                     # attack!
-                    send "$dir"
+                    send -s "$dir"
+                    sleep 0.1
+                    expect {
+                        "You kill the" {
+                            # eat the corpse
+                            send_error "XXX: eating ($monst corpse)\n"
+                            send "${dir}ey"
+                        }
+                    }
                     set cont 1
-                    set mcounter 0
+                    set idle_count 0
                 }
+                "You die" {
+                    send_error "XXX: well look at that, DEAD again\n"
+                    sleep 1
+                    set send_slow {1 1}
+                    expect {
+                        -timeout 1
+                        timeout {
+                            set cont 0
+                            set doauto 0
+                            set isdead 1
+                        }
+                        -re "--More--" {
+                            send -s " "
+                            exp_continue
+                        }
+                        "yn" {
+                            send -s "y "
+                            exp_continue
+                        }
+                    }
+                }
+
+                # "--More--" must come last, to avoid losing
+                # anything that came before it "e.g. "You die..."
+                -gl "--More--" {
+                    send " "
+                    set cont 1
+                }
+            }
+            if { $idle_count == 0 } {
+                # uncomment for human viewable run
+                #sleep 0.25
             }
         }
     }
-    if { $mcounter >= [llength $dirs] } {
+    if { !$isdead && $idle_count >= [llength $dirs] } {
         send "s"
-        if { $mcounter > 1000 } {
+        if { $idle_count > 1000 } {
             # bail...
             set doauto 0
         }
     }
 }
 
-
-send_error "XXXXX INTERACT XXXXX"
-interact
+if { $isdead == 0 } {
+    send_error "XXXXX INTERACT XXXXX\n"
+    interact
+}
