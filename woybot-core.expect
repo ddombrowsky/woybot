@@ -83,6 +83,23 @@ proc interested {} {
     return ""
 }
 
+proc pickup {type} {
+    sleep 0.5
+    send -s ","
+    expect {
+        -timeout 5
+        "(end)" {
+            send -s "${type} "
+            exp_continue
+        }
+        -gl "--More--" {
+            send -s " "
+            exp_continue
+        }
+        " - "
+    }
+}
+
 #
 # explore
 #
@@ -105,7 +122,7 @@ while {$doauto == 1} {
             # if we haven't seen anything interesting in 200
             # iterations, start searching.
             if { $searching > 200 } {
-                send_error "XXX: searching"
+                send_error "XXX: searching\n"
                 send -s "s:"
 
                 # Eventually catch the problem of trying to
@@ -180,8 +197,8 @@ while {$doauto == 1} {
                     if { $expect_out(1,string) == "corpse" } {
                         send -s "$dir"
                         set monst "unknown"
-                        expect -re "You see here a (\\w+) corpse" {
-                            set monst expect_out(1,string)
+                        expect -timeout 5 -re "You see here a (\\w+) corpse" {
+                            set monst $expect_out(1,string)
                         }
 
                         if { $monst == "lichen" } {
@@ -246,14 +263,12 @@ while {$doauto == 1} {
                     set idle_count 0
                 }
                 "?       a scroll" {
-                    send "${dir},"
-                    expect {
-                        "(end)" {
-                            send "? "
-                            exp_continue
-                        }
-                        " - a scroll"
-                    }
+                    send -s "${dir}"
+                    pickup "?"
+                }
+                "!       a potion" {
+                    send -s "${dir}"
+                    pickup "!"
                 }
                 -re ":       |d       |x       |r       |F       " {
                     set monst "UNKNOWN"
@@ -262,12 +277,13 @@ while {$doauto == 1} {
                     send -s "$dir"
                     sleep 0.1
                     expect {
+                        -timeout 2
                         -re "You kill the" {
                             send "${dir}"
                             exp_continue
                         }
-                        -re "You see here a (.*) corpse" {
-                            set monst $expect_out(0,string)
+                        -re "You see here a (\\w+) corpse" {
+                            set monst $expect_out(1,string)
 
                             # eat the corpse
                             send_error "XXX: eating ($monst corpse)\n"
@@ -277,7 +293,7 @@ while {$doauto == 1} {
                     set cont 1
                     set idle_count 0
                 }
-                -re "You die\\." {
+                "You die." {
                     send_error "XXX: well look at that, DEAD again\n"
                     sleep 1
                     set isdead 1
@@ -308,12 +324,17 @@ while {$doauto == 1} {
             puts $deathlog $expect_out(buffer)
             set send_slow {1 2}
             set doauto 0
+            # try and get the last few messages on the screen
+            expect "Do you want your possessions" {
+                send \020
+            }
+            # cycle through the stats
             expect {
                 -timeout 1
                 -re "--More--|(end)" {
                     send -s " "
                     flush stdout
-                    sleep 5
+                    sleep 3
                     puts $deathlog $expect_out(buffer)
                     exp_continue
                 }
