@@ -62,8 +62,8 @@ expect {
     "to NetHack"
 }
 
-# 0.1 sec delay every 1 char
-set send_slow {1 0.3}
+# 0.05 sec delay every 1 char
+set send_slow {1 0.01}
 
 send -s ";.v"
 expect {
@@ -93,13 +93,28 @@ set dirs [list l j h k h k l j l j y j u k n h k l b]
 set doauto 1
 set idle_count 0
 set isdead 0
+set searching 0
 while {$doauto == 1} {
     foreach dir $dirs {
-        send_error "XXX DIRECTION: $dir\n"
+        send_error "XXX DIRECTION: $dir, search count $searching\n"
         set cont 1
         while {$cont == 1} {
             # identify the next square
-            send ";$dir." 
+            send -s ";$dir."
+
+            # if we haven't seen anything interesting in 200
+            # iterations, start searching.
+            if { $searching > 200 } {
+                send_error "XXX: searching"
+                send -s "s:"
+
+                # Eventually catch the problem of trying to
+                # move diagonally out of a doorway.
+                expect "There is an open door here" {
+                    set cont 0
+                }
+            }
+
             set timeout 0.5
             expect {
                 timeout {
@@ -120,11 +135,13 @@ while {$doauto == 1} {
                             set idle_count 0
                         }
                     }
+                    set searching 0
                 }
                 ".       a doorway or the floor of a room" {
                     send "$dir"
                     set cont 1
                     set idle_count 0
+                    incr searching
                 }
                 -gl "-       a wall or an open door (open door)" {
                     # doors can only be entered orthogonally
@@ -142,6 +159,7 @@ while {$doauto == 1} {
                     send "G$dir"
                     set cont 1
                     set idle_count 0
+                    incr searching
                 }
                 -re "(tame \\w+ called Mountain Lion Cat)" {
                     send "m$dir"
@@ -160,8 +178,18 @@ while {$doauto == 1} {
                 }
                 -re "%       a piece of food \\((\[^)\]+)\\)" {
                     if { $expect_out(1,string) == "corpse" } {
-                        send_error "XXX: not eating corpse!\n"
-                        send "$dir"
+                        send -s "$dir"
+                        set monst "unknown"
+                        expect -re "You see here a (\\w+) corpse" {
+                            set monst expect_out(1,string)
+                        }
+
+                        if { $monst == "lichen" } {
+                            send_error "XXX: eating (lichen)\n"
+                            send "ey"
+                        } else {
+                            send_error "XXX: not eating $monst corpse!\n"
+                        }
                     } elseif { $expect_out(1,string) == "tin" } {
                         send_error "XXX: not eating tin!\n"
                         send "$dir"
@@ -217,10 +245,20 @@ while {$doauto == 1} {
                     }
                     set idle_count 0
                 }
+                "?       a scroll" {
+                    send "${dir},"
+                    expect {
+                        "(end)" {
+                            send "? "
+                            exp_continue
+                        }
+                        " - a scroll"
+                    }
+                }
                 -re ":       |d       |x       |r       |F       " {
                     set monst "UNKNOWN"
                     # attack!
-                    send_error "XXX: attack!"
+                    send_error "XXX: attack!\n"
                     send -s "$dir"
                     sleep 0.1
                     expect {
@@ -228,7 +266,7 @@ while {$doauto == 1} {
                             send "${dir}"
                             exp_continue
                         }
-                        "You see here a (.*) corpse" {
+                        -re "You see here a (.*) corpse" {
                             set monst $expect_out(0,string)
 
                             # eat the corpse
@@ -275,7 +313,7 @@ while {$doauto == 1} {
                 -re "--More--|(end)" {
                     send -s " "
                     flush stdout
-                    sleep 1
+                    sleep 5
                     puts $deathlog $expect_out(buffer)
                     exp_continue
                 }
@@ -292,11 +330,14 @@ while {$doauto == 1} {
             break
         }
     }
-    if { !$isdead && $idle_count >= [llength $dirs] } {
+    if { !$isdead } {
         send "s"
-        if { $idle_count > 1000 } {
-            # bail...
-            set doauto 0
+        if { $idle_count >= [llength $dirs] } {
+            send "."
+            if { $idle_count > 1000 } {
+                # bail...
+                set doauto 0
+            }
         }
     }
 }
@@ -306,4 +347,4 @@ if { !$isdead } {
     interact
 }
 
-send_error "XXX: clean exit"
+send_error "XXX: clean exit\n"
