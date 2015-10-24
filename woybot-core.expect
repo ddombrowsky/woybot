@@ -303,7 +303,7 @@ while {$doauto == 1} {
                     set idle_count 0
                 }
                 ">       a staircase down or a ladder down (staircase down)" {
-                    send "$dir"
+                    send "$dir>"
                     set cont 1
                     set idle_count 0
                 }
