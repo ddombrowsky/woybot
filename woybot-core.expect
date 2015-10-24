@@ -44,6 +44,7 @@ if { $islocal == 1 } {
     sleep 1
 }
 
+set isnew 0
 expect {
     timeout exit
     "There are some stale" {
@@ -53,6 +54,7 @@ expect {
     "Shall I pick a character's race" {
         # wizard human male neutral
         send "nwhmn"
+        set isnew 1
         exp_continue
     }
     -re "--More--" {
@@ -60,6 +62,11 @@ expect {
         exp_continue
     }
     "to NetHack"
+}
+
+if { $isnew } {
+    # put on rings
+    send "PdrPe"
 }
 
 # 0.05 sec delay every 1 char
