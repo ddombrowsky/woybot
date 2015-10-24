@@ -101,9 +101,20 @@ set searching 201
 #
 
 set tolook_orthag 0
+array set tolook_walls {}
+set prevdir ""
 
 proc interested {dir} {
     set ret ""
+
+    if { $dir != $::prevdir } {
+        send_error "XXX: new direction $::prevdir -> $dir, resetting wall counts\n"
+        # direction changed, reset corridor search counts
+        foreach l [list y u h j k l b n] {
+            set ::tolook_walls($l) 0
+        }
+        set ::prevdir $dir
+    }
 
     # to speed things up, alternate between
     # diagonal and orthoganal searching
@@ -118,6 +129,8 @@ proc interested {dir} {
     }
 
     foreach l $tolook {
+        set iswall 0
+
         send -s ";${l}.v"
         expect "Pick an object"
         expect {
@@ -139,11 +152,11 @@ proc interested {dir} {
 
                 if { $tame } {
                     send_error "XXX: int: ignoring tame $monst\n"
+                    exp_continue
                 } else {
                     send_error "XXX: int: found monster $monst at $l\n"
                     set ret $l
                 }
-                exp_continue
             }
             "(open door)" {
                 # rule: only turn into doors
@@ -163,19 +176,29 @@ proc interested {dir} {
                 send_error "XXX: int: found staircase down at $l\n"
                 set ret $l
             }
-            "|       " {
-                exp_continue
-            }
-            "(dark part of a room)" {
-                exp_continue
-            }
-            "(corridor)" {
+            -re "\\|       |-       |\\(dark part of a room\\)" {
+                # wall or dark part of room
+                incr ::tolook_walls($l)
+                send_error "XXX: int: found wall at $l, tolook_walls($l) $::tolook_walls($l)\n"
+                set iswall 1
                 exp_continue
             }
             "^       a trap" {
                 exp_continue
             }
-            -re "\\.       |#       |-       |\{       |<       " {
+            -re "\\.       |\\(corridor\\)" {
+                # Detect when we're searcing along a wall and
+                # find an opening.
+                if { $::tolook_walls($l) > 1 } {
+                    send_error "XXX: int: found an opening at $l (after $::tolook_walls($l) walls)\n"
+                    set ret $l
+                }
+                set ::tolook_walls($l) 0
+                if { $ret == "" } {
+                    exp_continue
+                }
+            }
+            -re "#       |\{       |<       " {
                 exp_continue
             }
             "Unix NetHack Version 3.4.3" {
@@ -183,10 +206,15 @@ proc interested {dir} {
             }
             -gl "--More--" {
                 send " "
+                exp_continue
             }
         }
-        expect -timeout 0 -gl "--More--" { send " " }
 
+        if { !$iswall } {
+            # If we found anything but a wall in this direction,
+            # reset the passage search counter.
+            set ::tolook_walls($l) 0
+        }
         if { $ret != "" } {
             break
         }
@@ -204,6 +232,8 @@ proc pickup {type} {
             send -s "${type} "
             exp_continue
         }
+        "There is nothing here to pick up" {
+        }
         -gl "--More--" {
             send -s " "
             exp_continue
@@ -212,12 +242,20 @@ proc pickup {type} {
     }
 }
 
+proc move_into_door {dir} {
+    # attempt to move in front of the door
+    switch $dir {
+        "y" { send "hkh" }
+        "u" { send "lkl" }
+        "b" { send "hjh" }
+        "n" { send "ljl" }
+    }
+}
+
 #
 # explore
 #
 
-#set dirs [list l j y j u h n h k l b]
-#set dirs [list l j h k h k l j l j y j u k n h j l b h k h k ]
 set dirs [list y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u h j h k h l h b h n j y j u j h j k j l j b j n k y k u k h k j k l k b k n l y l u l h l j l k l b l n b y b u b h b j b k b l b n n y n u n h n j n k n l n b ]
 
 while {$doauto == 1} {
@@ -229,34 +267,54 @@ while {$doauto == 1} {
             # iterations, start searching.
             if { $searching > 200 } {
                 send_error "XXX: searching\n"
-                send -s "s:"
+                send -s "s"
+            }
 
-                # Eventually catch the problem of trying to
-                # move diagonally out of a doorway.
-                expect {
-                    "There is an open door here" {
-                        set cont 0
-                        switch $dir {
-                            "y" { set dir "h" }
-                            "u" { set dir "k" }
-                            "b" { set dir "j" }
-                            "n" { set dir "l" }
-                        }
+            send ":"
+
+            #
+            # FIRST: identify the current square
+            #
+            expect {
+                "There is an open door here" {
+                    set cont 0
+                    switch $dir {
+                        "y" { set dir "h" }
+                        "u" { set dir "k" }
+                        "b" { set dir "j" }
+                        "n" { set dir "l" }
                     }
-                    "You see no objects here" {
-                    }
-                    "There is a doorway here" {
-                    }
-                    "There is a staircase up here" {
-                    }
+                    set timeout 0 ; exp_continue
+                }
+                "You see no objects here" {
+                }
+                "There is a doorway here" {
+                    set timeout 0 ; exp_continue
+                }
+                "There is a staircase up here" {
+                    set timeout 0 ; exp_continue
+                }
+                "You see" {
+                    set timeout 0 ; exp_continue
+                }
+                -gl "--More--" {
+                    send " "
                 }
             }
 
-            # identify the next square
+            #
+            # SECOND: identify the next square
+            #
             send -s ";$dir."
 
             set timeout 2
-            expect "Pick an object"
+            expect {
+                timeout {
+                    send_error "XXX: invalid state when identifying next square"
+                    exit
+                }
+                "Pick an object"
+            }
             expect {
                 timeout {
                     # don't care
@@ -293,6 +351,12 @@ while {$doauto == 1} {
                         }
                     }
                 }
+                "Really attack" {
+                    # don't violate paranoid attack
+                    send " "
+                    set cont 0
+                    incr idle_count
+                }
                 "woybot" {
                     # If we're looking at ourselves then we
                     # must be at the edge of the map.
@@ -316,6 +380,7 @@ while {$doauto == 1} {
                 "\\0       an iron ball or boulder" {
                     send -s "$dir"
                     expect {
+                        -timeout 1
                         timeout {
                             set cont 0
                             incr idle_count
@@ -334,6 +399,9 @@ while {$doauto == 1} {
                                 exp_continue
                             }
                         }
+                        "you move the boulder" {
+                            set cont 1
+                        }
 
                     }
                 }
@@ -346,7 +414,11 @@ while {$doauto == 1} {
                             send "$dir"
                         }
                         -re "The door opens|The door resists!" {
-                            send "$dir"
+                            if { $expect_out(0,string) == "The door opens" } {
+                                move_into_door $dir
+                            } else {
+                                send "$dir"
+                            }
                             set cont 1
                             set idle_count 0
                         }
@@ -370,12 +442,7 @@ while {$doauto == 1} {
                         set searching 201
                     } else {
                         # attempt move in front of the door
-                        switch $dir {
-                            "y" { send "hk" }
-                            "u" { send "lk" }
-                            "b" { send "hj" }
-                            "n" { send "lj" }
-                        }
+                        move_into_door $dir
                         set cont 0
                         set searching 201
                     }
@@ -445,7 +512,7 @@ while {$doauto == 1} {
                         send "${dir}ey"
                     }
                 }
-                -re "\\(       a useful item.*\\(large box\\)" {
+                "(       a useful item" {
                     send "$dir"
                     set cont 1
                     set idle_count 0
@@ -477,16 +544,28 @@ while {$doauto == 1} {
                 "?       a scroll" {
                     send -s "${dir}"
                     pickup "?"
+                    incr idle_count
                 }
                 "!       a potion" {
                     send -s "${dir}"
                     pickup "!"
+                    incr idle_count
+                }
+                ")       a weapon" {
+                    send "${dir}"
+                    pickup ")"
+                    incr idle_count
+                }
+                "\\\[       a suit" {
+                    send "${dir}"
+                    # no pickup for now
+                    incr idle_count
                 }
                 -re "e       .*\\(floating eye\\)" {
                     send "$dir"
                     set cont 0
                 }
-                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       " {
+                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       " {
                     set monst "UNKNOWN"
                     set monname "UNKNOWN"
                     # attack!
@@ -518,6 +597,11 @@ while {$doauto == 1} {
                     set cont 1
                     set idle_count 0
                 }
+                -re "b       .*\\(acid blob\\)" {
+                    # avoid
+                    set cont 0
+                    incr idle_count
+                }
                 "You die." {
                     send_error "XXX: well look at that, DEAD again\n"
                     sleep 1
@@ -532,6 +616,9 @@ while {$doauto == 1} {
                 }
             }
 
+            #
+            # THIRD: identify the surrounding squares
+            #
             set ndir [interested $dir]
             if { $ndir != "" } {
                 send_error "XXX: interested in direction $ndir\n"
@@ -544,6 +631,10 @@ while {$doauto == 1} {
                 # clear out the More-s
                 expect {
                     -timeout 0
+                    "You die\\." {
+                        set cont 0
+                        set isdead 1
+                    }
                     "Do you want your possessions" {
                         set cont 0
                         set isdead 1
