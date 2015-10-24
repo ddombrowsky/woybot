@@ -75,12 +75,98 @@ expect {
     "Unix NetHack"
 }
 
+set opposite_dir(h) "l"
+set opposite_dir(j) "k"
+set opposite_dir(k) "j"
+set opposite_dir(l) "h"
+set opposite_dir(y) "n"
+set opposite_dir(u) "b"
+set opposite_dir(b) "u"
+set opposite_dir(n) "y"
+
 #
 # procs
 #
 
-proc interested {} {
-    return ""
+set tolook_orthag 0
+
+proc interested {dir} {
+    set ret ""
+
+    # to speed things up, alternate between
+    # diagonal and orthoganal searching
+    if { $::tolook_orthag == 0 } {
+        set tolook [list y u b n ]
+        set ::tolook_orthag 1
+    } else {
+        set tolook [list h j k l ]
+        set ::tolook_orthag 0
+    }
+
+    foreach l $tolook {
+        send -s ";${l}.v"
+        expect "Pick an object"
+        expect {
+            -re {\[H[a-zA-Z&@:]       } {
+                # monster, we care
+                set monst $expect_out(0,string)
+                set tame 0
+                expect -timeout 0 "tame" {
+                    set tame 1
+                }
+
+                if { $tame } {
+                    send_error "XXX: int: ignoring tame $monst\n"
+                } else {
+                    send_error "XXX: int: found monster $monst at $l\n"
+                    set ret $l
+                }
+                exp_continue
+            }
+            "(open door)" {
+                # rule: only turn into doors
+                if { ($::opposite_dir($dir) == $l) || ([lsearch [list l k j h ] $dir ] < 0) } {
+                    send_error "XXX: int: NOT backing up into open door at $l\n"
+                } else {
+                    send_error "XXX: int: found open door at $l\n"
+                    set ret $l
+                }
+             }
+            "\\+       a spellbook or a closed door (closed door)" {
+                # door, we care
+                send_error "XXX: int: found closed door at $l\n"
+                set ret $l
+            }
+            "|       " {
+                exp_continue
+            }
+            "(dark part of a room)" {
+                exp_continue
+            }
+            "(corridor)" {
+                exp_continue
+            }
+            "^       a trap" {
+                exp_continue
+            }
+            -re "\\.       |#       |-       |\{       |<       " {
+                exp_continue
+            }
+            "Unix NetHack Version 3.4.3" {
+                # done!
+            }
+            -gl "--More--" {
+                send " "
+            }
+        }
+        expect -timeout 0 -gl "--More--" { send " " }
+
+        if { $ret != "" } {
+            break
+        }
+    }
+
+    return $ret
 }
 
 proc pickup {type} {
@@ -116,9 +202,6 @@ while {$doauto == 1} {
         send_error "XXX DIRECTION: $dir, search count $searching\n"
         set cont 1
         while {$cont == 1} {
-            # identify the next square
-            send -s ";$dir."
-
             # if we haven't seen anything interesting in 200
             # iterations, start searching.
             if { $searching > 200 } {
@@ -127,18 +210,46 @@ while {$doauto == 1} {
 
                 # Eventually catch the problem of trying to
                 # move diagonally out of a doorway.
-                expect "There is an open door here" {
-                    set cont 0
+                expect {
+                    "There is an open door here" {
+                        set cont 0
+                    }
+                    "You see no objects here" {
+                    }
                 }
             }
 
-            set timeout 0.5
+            # identify the next square
+            send -s ";$dir."
+
+            set timeout 2
+            expect "Pick an object"
             expect {
                 timeout {
+                    # don't care
+                    set cont 0
+                    incr idle_count
+                    send_error "XXX: unknown response, idle_count $idle_count\n"
+                }
+                "(wall)" {
+                    # don't care
                     set cont 0
                     incr idle_count
                 }
-                "+       a spellbook or a closed door (closed door)" {
+                "(dark part of a room)" {
+                    # don't care
+                    set cont 0
+                    incr idle_count
+                }
+                "\\^       a trap" {
+                    set cont 0
+                    incr idle_count
+                }
+                "\\0       an iron ball or boulder" {
+                    set cont 0
+                    incr idle_count
+                }
+                "\\+       a spellbook or a closed door (closed door)" {
                     send -s "o$dir"
                     sleep 0.25
                     expect {
@@ -160,7 +271,7 @@ while {$doauto == 1} {
                     set idle_count 0
                     incr searching
                 }
-                -gl "-       a wall or an open door (open door)" {
+                "(open door)" {
                     # doors can only be entered orthogonally
                     if { [lsearch [list l k j h ] $dir ] >= 0 } {
                         send "$dir"
@@ -170,13 +281,16 @@ while {$doauto == 1} {
                         set cont 0
                     }
                 }
-                -re "#       iron bars or a tree.*\\(corridor\\)" {
-                    # maybe sometimes travel down corridors?
-                    #send [string toupper "$dir"]
-                    send "G$dir"
-                    set cont 1
-                    set idle_count 0
-                    incr searching
+                -re "#       iron bars or a tree" {
+                    expect "(corridor)" {
+                        expect -timeout 0 -gl "--More--" { send " " }
+                        # maybe sometimes travel down corridors?
+                        #send [string toupper "$dir"]
+                        send "G$dir"
+                        set cont 1
+                        set idle_count 0
+                        incr searching
+                    }
                 }
                 -re "(tame \\w+ called Mountain Lion Cat)" {
                     send "m$dir"
@@ -188,7 +302,7 @@ while {$doauto == 1} {
                     set cont 1
                     set idle_count 0
                 }
-                ">       a staircase up or a ladder down (staircase down)" {
+                ">       a staircase down or a ladder down (staircase down)" {
                     send "$dir"
                     set cont 1
                     set idle_count 0
@@ -197,8 +311,18 @@ while {$doauto == 1} {
                     if { $expect_out(1,string) == "corpse" } {
                         send -s "$dir"
                         set monst "unknown"
-                        expect -timeout 5 -re "You see here a (\\w+) corpse" {
-                            set monst $expect_out(1,string)
+                        expect {
+                            -timeout 5
+                            timeout {
+                                # If the corpse is in a doorway, and we can't
+                                # enter diagonally, it is detected by
+                                # this timeout.
+                                set cont 0
+                                incr idle_count
+                            }
+                            -re "You see here a (\\w+) corpse" {
+                                set monst $expect_out(1,string)
+                            }
                         }
 
                         if { $monst == "lichen" } {
@@ -221,7 +345,17 @@ while {$doauto == 1} {
                     set idle_count 0
 
                 }
-                -re "Weak|Fainting" {
+                "(statue of a" {
+                    send "$dir"
+                    set cont 1
+                    set idle_count 0
+                }
+                "\{       a fountain" {
+                    send "$dir"
+                    set cont 1
+                    set idle_count 0
+                }
+                -re "Weak|Fainting|Fainted" {
                     # place a call!
                     #send "#py"
                     send "#pray\ry"
@@ -270,7 +404,7 @@ while {$doauto == 1} {
                     send -s "${dir}"
                     pickup "!"
                 }
-                -re ":       |d       |x       |r       |F       " {
+                -re ":       |d       |x       |r       |F       |o       |k       |Z       " {
                     set monst "UNKNOWN"
                     # attack!
                     send_error "XXX: attack!\n"
@@ -282,7 +416,7 @@ while {$doauto == 1} {
                             send "${dir}"
                             exp_continue
                         }
-                        -re "You see here a (\\w+) corpse" {
+                        -re "a (\\w+) corpse" {
                             set monst $expect_out(1,string)
 
                             # eat the corpse
@@ -307,16 +441,29 @@ while {$doauto == 1} {
                 }
             }
 
-            set ndir [interested]
+            set ndir [interested $dir]
             if { $ndir != "" } {
-                send_error "XXX: interested in direction $ndir"
+                send_error "XXX: interested in direction $ndir\n"
                 set dir $ndir
+                set cont 1
+            } else {
+                send_error "XXX: idle_count $idle_count\n"
+
+                # clear out the More-s
+                expect {
+                    -timeout 0
+                    "Do you want your possessions" {
+                        set cont 0
+                        set isdead 1
+                        send \020
+                    }
+                    -gl "--More--" {
+                        send " "
+                        exp_continue
+                    }
+                }
             }
 
-            if { $idle_count == 0 } {
-                # uncomment for human viewable run
-                #sleep 0.25
-            }
         }
 
         if { $isdead } {
@@ -334,7 +481,7 @@ while {$doauto == 1} {
                 -re "--More--|(end)" {
                     send -s " "
                     flush stdout
-                    sleep 3
+                    sleep 1
                     puts $deathlog $expect_out(buffer)
                     exp_continue
                 }
