@@ -112,8 +112,8 @@ proc interested {dir} {
     } else {
         set tolook [list h j k l ]
     }
-    incr ::tolook_orthag 1
-    if { $::tolook_orthag == 4 } {
+    incr ::tolook_orthag
+    if { $::tolook_orthag >= 4 } {
         set ::tolook_orthag 0
     }
 
