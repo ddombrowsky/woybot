@@ -380,18 +380,58 @@ proc move_into_door {dir} {
     }
 }
 
+proc after_attack {dir} {
+    expect {
+        -timeout 1
+        "You miss " {
+            # nothing
+        }
+        "You hit " {
+            # nothing
+        }
+        -re "You (kill|destroy) the (.*)!" {
+            set monname $expect_out(2,string)
+            send_error "XXX: killed $monname\n"
+            send "${dir}"
+            exp_continue
+        }
+        -re "The (\[a-zA-Z \]+) is killed!" {
+            set monname $expect_out(1,string)
+            send_error "XXX: something killed $monname\n"
+            send "${dir}"
+            exp_continue
+        }
+        -re "a (\[a-zA-Z \]+) corpse" {
+            set monst $expect_out(1,string)
+
+            if { [lsearch {
+                "kobold"
+                } $monst] < 0 } {
+                # eat the corpse
+                if { !$::issatiated } {
+                    send_error "XXX: eating ($monst corpse)\n"
+                    send " ey"
+                } else {
+                    send_error "XXX: not eating ($monst corpse), too full\n"
+                }
+            } else {
+                send_error "XXX: NOT eating slain $monst corpse\n"
+            }
+        }
+    }
+}
+
 #
 # explore
 #
 
-#set dirs [list h y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u h j h k h l h b h n j y j u j h j k j l j b j n k y k u k h k j k l k b k n l y l u l h l j l k l b l n b y b u b h b j b k b l b n n y n u n h n j n k n l n b ]
-set dirs [list y k u l n j b h j l k]
+set dirs [list h y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u h j h k h l h b h n j y j u j h j k j l j b j n k y k u k h k j k l k b k n l y l u l h l j l k l b l n b y b u b h b j b k b l b n n y n u n h n j n k n l n b ]
 
 while {$doauto == 1} {
     foreach dir $dirs {
         send_error "XXX DIRECTION: $dir, search count $searching\n"
         set cont 1
-        set issatiated 0
+        set ::issatiated 0
         while {$cont == 1} {
             # if we haven't seen anything interesting in 200
             # iterations, start searching.
@@ -469,7 +509,7 @@ while {$doauto == 1} {
                     send_error "XXX: unknown response, idle_count $idle_count\n"
                 }
                 # hunger emergency comes first
-                -re "Weak|Fainting|Fainted" {
+                -re "Weak|Fainting|Fainted|FoodPois" {
                     # place a call!
                     #send "#py"
                     send "#pray\ry"
@@ -522,7 +562,7 @@ while {$doauto == 1} {
                 "(dark part of a room)" {
                     if { $searching > 200 } {
                         send_error "XXX: end of corridor? 5 turn SEARCH\n"
-                        send "5s"
+                        send "15s"
                         # bump up idle count to force a quick change
                         incr idle_count 25
                     } else {
@@ -660,7 +700,7 @@ while {$doauto == 1} {
                         }
 
                         if { $monst == "lichen" } {
-                            if { !$issatiated } {
+                            if { !$::issatiated } {
                                 send_error "XXX: eating (lichen)\n"
                                 send "ey"
                             } else {
@@ -673,7 +713,7 @@ while {$doauto == 1} {
                         send_error "XXX: not eating tin!\n"
                         send "$dir"
                     } else {
-                        if { !$issatiated } {
+                        if { !$::issatiated } {
                             send_error "XXX: eating (found food)\n"
                             send "${dir}ey"
                         } else {
@@ -736,64 +776,39 @@ while {$doauto == 1} {
                     if { $c != "" } {
                         send "W$c"
                     }
+                    incr idle_count
+                }
+                "/       a wand" {
+                    send "${dir}"
+                    set c [pickup "/"]
+                    if { $c != "" } {
+                        send "z$c$dir"
+                    }
+                    incr idle_count
                 }
                 -re "e       .*\\(floating eye\\)" {
-                    # avoid (for now)
-                    set cont 0
-                    incr idle_count
-                    # autosearch next turn, since finding a
-                    # monster would have cleared it
-                    set searching 300
+                    send -s "Za$dir"
+                    sleep 0.1
+
+                    after_attack $dir
                 }
-                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       " {
+                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       " {
                     set monst "UNKNOWN"
                     set monname "UNKNOWN"
                     # attack!
                     send_error "XXX: attack!\n"
                     send -s "$dir"
                     sleep 0.1
-                    expect {
-                        -timeout 1
-                        "You miss " {
-                            # nothing
-                        }
-                        "You hit " {
-                            # nothing
-                        }
-                        -re "You (kill|destroy) the (.*)!" {
-                            set monname $expect_out(2,string)
-                            send_error "XXX: killed $monname\n"
-                            send "${dir}"
-                            exp_continue
-                        }
-                        -re "The (\[a-zA-Z \]+) is killed!" {
-                            set monname $expect_out(1,string)
-                            send_error "XXX: something killed $monname\n"
-                            send "${dir}"
-                            exp_continue
-                        }
-                        -re "a (\[a-zA-Z \]+) corpse" {
-                            set monst $expect_out(1,string)
 
-                            if { [lsearch {
-                                "kobold"
-                                } $monst] < 0 } {
-                                # eat the corpse
-                                if { !$issatiated } {
-                                    send_error "XXX: eating ($monst corpse)\n"
-                                    send " ey"
-                                } else {
-                                    send_error "XXX: not eating ($monst corpse), too full\n"
-                                }
-                            } else {
-                                send_error "XXX: NOT eating slain $monst corpse\n"
-                            }
-                        }
-                    }
+                    after_attack $dir
+
                     set cont 1
                     set idle_count 0
                 }
                 -re "b       .*\\(acid blob\\)|e       .*\\(gas spore\\)" {
+                    if { $idle_count > 5 } {
+                        send "$dir"
+                    }
                     # avoid
                     set cont 0
                     incr idle_count
@@ -802,7 +817,8 @@ while {$doauto == 1} {
                     set searching 300
                 }
                 "Satiated" {
-                    set issatiated 1
+                    set ::issatiated 1
+                    incr idle_count
                 }
 
                 # "--More--" must come last, to avoid losing
@@ -810,6 +826,7 @@ while {$doauto == 1} {
                 -gl "--More--" {
                     send " "
                     set cont 1
+                    exp_continue
                 }
             }
 
@@ -845,6 +862,10 @@ while {$doauto == 1} {
                         send " "
                         exp_continue
                     }
+                }
+
+                if { $isdead } {
+                    set cont 0
                 }
             }
 
