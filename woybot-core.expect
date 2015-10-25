@@ -101,6 +101,19 @@ set searching 201
 # procs
 #
 
+# When interested in objects, only detect
+# on orthagonal directions.  This is because
+# we can't detect if it's in a doorway and thus
+# can't move diagnoally into it.
+proc is_orthag {dir} {
+    if { [lsearch {h j k l} $dir] >= 0 } {
+        return $dir
+    } else {
+        send_error "XXX: ignoring, not orthagonal\n"
+        return ""
+    }
+}
+
 array set tolook_walls {}
 set prevdir ""
 set cdir_count 0
@@ -127,11 +140,37 @@ proc interested {dir} {
 
     foreach l $tolook {
         set iswall 0
+        set retry 10
 
-        send -s ";${l}.v"
+        send ";"
 
-        set timeout 1
-        expect "Pick an object"
+        set timeout 0.5
+        expect {
+            timeout {
+                # something's up, try again
+                send " ;"
+                incr retry -1
+                if { $retry > 0 } {
+                    exp_continue
+                }
+            }
+            -re "You fry to a crisp|You die\\." {
+                set ::isdead 1
+                return "";
+            }
+            "(end) " {
+                send " "
+                exp_continue
+            }
+            -gl "--More--" {
+                send " "
+                exp_continue
+            }
+            "Pick an object"
+        }
+
+        send -s "${l}.v"
+        set timeout 10
         expect {
             timeout {
                 send_error "XXX: ERROR: didn't find version string\n"
@@ -258,22 +297,26 @@ proc interested {dir} {
             }
             -re "%       " {
                 send_error "XXX: int: found a piece of food at $l\n"
-                set ret $l
+                set ret [is_orthag $l]
             }
             ")       a weapon" {
                 send_error "XXX: int: found a weapon at $l\n"
-                set ret $l
+                set ret [is_orthag $l]
             }
             "\\\[       a suit" {
                 send_error "XXX: int: found a suit at $l\n"
-                set ret $l
+                set ret [is_orthag $l]
             }
             "\\$       " {
                 send_error "XXX: int: found some gold at $l\n"
-                set ret $l
+                set ret [is_orthag $l]
             }
             "Unix NetHack Version 3.4.3" {
                 # done!
+            }
+            "You hear" {
+                # sounds can make the version string go
+                # away (?), so accept it.
             }
             -gl "--More--" {
                 send " "
@@ -292,6 +335,16 @@ proc interested {dir} {
             set ::cdir_count 4
             break
         }
+
+        # Last-change timeout: if our wall counts are super
+        # high, then we're stuck (e.g. invisible and at the
+        # edge of the map).
+        if { $::tolook_walls($l) > 80 } {
+            send_error "XXX: STUCK, reversing direction\n"
+            set ret $::opposite_dir($dir)
+            break
+        }
+
     }
 
     return $ret
