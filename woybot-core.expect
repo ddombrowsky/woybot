@@ -370,6 +370,10 @@ proc pickup {type} {
         }
         "There is nothing here to pick up" {
         }
+        "You die\\." {
+            set ::isdead 1
+            return ""
+        }
         -gl "--More--" {
             send -s " ,"
             exp_continue
@@ -508,6 +512,10 @@ while {$doauto == 1} {
                 timeout {
                     send_error "XXX: invalid state when identifying next square\n"
                     exit
+                }
+                -gl "--More--" {
+                    send -s " ;$dir."
+                    exp_continue
                 }
                 "Pick an object"
             }
@@ -802,7 +810,7 @@ while {$doauto == 1} {
 
                     after_attack $dir
                 }
-                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       " {
+                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       |m       " {
                     set monst "UNKNOWN"
                     set monname "UNKNOWN"
                     # attack!
