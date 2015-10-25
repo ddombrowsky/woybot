@@ -158,6 +158,11 @@ proc interested {dir} {
                 set ::isdead 1
                 return "";
             }
+            "Do you want your possessions identified" {
+                # something happened, and we're dead
+                set ::isdead 1
+                return "";
+            }
             "(end) " {
                 send " "
                 exp_continue
@@ -180,9 +185,14 @@ proc interested {dir} {
                 set ::isdead 1
                 return "";
             }
+            -re "Call a (.*):" {
+                set obj $expect_out(0,string)
+                send "unknown $obj\r"
+                return "";
+            }
             "woybot" {
-                # ignore self
-                exp_continue
+                # ignore self, retry
+                return [interested $dir]
             }
             -re {\[H[a-zA-Z&@:]       } {
                 # monster, we care
