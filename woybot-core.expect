@@ -94,6 +94,7 @@ set opposite_dir(n) "y"
 set doauto 1
 set idle_count 0
 set isdead 0
+set issatiated 0
 set searching 201
 
 #
@@ -134,7 +135,7 @@ proc interested {dir} {
         send -s ";${l}.v"
         expect "Pick an object"
         expect {
-            "You die\\." {
+            -re "You fry to a crisp|You die\\." {
                 set ::isdead 1
                 return "";
             }
@@ -189,17 +190,74 @@ proc interested {dir} {
             -re "\\.       |\\(corridor\\)" {
                 # Detect when we're searcing along a wall and
                 # find an opening.
-                if { $::tolook_walls($l) > 1 } {
-                    send_error "XXX: int: found an opening at $l (after $::tolook_walls($l) walls)\n"
+                if { $::tolook_walls($l) > 0 } {
                     set ret $l
+                    set swhy "after $::tolook_walls($l) wall(s))"
+                } else {
+                    switch $l {
+                        "h" {
+                            if { $::tolook_walls(y) > 0 &&
+                                 $::tolook_walls(b) > 0 } \
+                            {
+                                set ret "h"
+                                set swhy "walls on y,b"
+                            }
+                        }
+                        "l" {
+                            if { $::tolook_walls(u) > 0 &&
+                                 $::tolook_walls(n) > 0 } \
+                            {
+                                set ret "l"
+                                set swhy "walls on u,n"
+                            }
+                        }
+                        "j" {
+                            if { $::tolook_walls(b) > 0 &&
+                                 $::tolook_walls(n) > 0 } \
+                            {
+                                set ret "j"
+                                set swhy "walls on b,n"
+                            }
+                        }
+                        "k" {
+                            if { $::tolook_walls(y) > 0 &&
+                                 $::tolook_walls(u) > 0 } \
+                            {
+                                set ret "k"
+                                set swhy "walls on y,u"
+                            }
+                        }
+                    }
                 }
                 set ::tolook_walls($l) 0
                 if { $ret == "" } {
                     exp_continue
+                } else {
+                    send_error "XXX: int: found an opening at $l ($swhy)\n"
                 }
             }
             -re "#       |\{       |<       " {
                 exp_continue
+            }
+            -re "%       .*corpse" {
+                # old corpse, not interested
+                exp_continue
+            }
+            -re "%       " {
+                send_error "XXX: int: found a piece of food at $l\n"
+                set ret $l
+            }
+            ")       a weapon" {
+                send_error "XXX: int: found a weapon at $l\n"
+                set ret $l
+            }
+            "\\\[       a suit" {
+                send_error "XXX: int: found a suit at $l\n"
+                set ret $l
+            }
+            "\\$       " {
+                send_error "XXX: int: found some gold at $l\n"
+                set ret $l
             }
             "Unix NetHack Version 3.4.3" {
                 # done!
@@ -235,10 +293,12 @@ proc pickup {type} {
         "There is nothing here to pick up" {
         }
         -gl "--More--" {
-            send -s " "
+            send -s " ,"
             exp_continue
         }
-        " - "
+        -re "(.) - " {
+            return $expect_out(1,string)
+        }
     }
 }
 
@@ -256,12 +316,13 @@ proc move_into_door {dir} {
 # explore
 #
 
-set dirs [list y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u h j h k h l h b h n j y j u j h j k j l j b j n k y k u k h k j k l k b k n l y l u l h l j l k l b l n b y b u b h b j b k b l b n n y n u n h n j n k n l n b ]
+set dirs [list l y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u h j h k h l h b h n j y j u j h j k j l j b j n k y k u k h k j k l k b k n l y l u l h l j l k l b l n b y b u b h b j b k b l b n n y n u n h n j n k n l n b ]
 
 while {$doauto == 1} {
     foreach dir $dirs {
         send_error "XXX DIRECTION: $dir, search count $searching\n"
         set cont 1
+        set issatiated 0
         while {$cont == 1} {
             # if we haven't seen anything interesting in 200
             # iterations, start searching.
@@ -291,6 +352,9 @@ while {$doauto == 1} {
                 "There is a doorway here" {
                     set timeout 0 ; exp_continue
                 }
+                "There is a broken door here" {
+                    set timeout 0 ; exp_continue
+                }
                 "There is a staircase up here" {
                     set timeout 0 ; exp_continue
                 }
@@ -303,7 +367,8 @@ while {$doauto == 1} {
             }
 
             #
-            # SECOND: identify the next square
+            # SECOND: identify the next square, make
+            # move, handle extreme hunger
             #
             send -s ";$dir."
 
@@ -351,6 +416,11 @@ while {$doauto == 1} {
                         }
                     }
                 }
+                -re "You fry to a crisp|You die\\." {
+                    send_error "XXX: well look at that, DEAD again\n"
+                    sleep 1
+                    set isdead 1
+                }
                 "Really attack" {
                     # don't violate paranoid attack
                     send " "
@@ -369,8 +439,13 @@ while {$doauto == 1} {
                     incr idle_count
                 }
                 "(dark part of a room)" {
-                    # don't care
-                    set cont 0
+                    if { $searching > 400 } {
+                        send_error "XXX: end of corridor? 5 turn SEARCH"
+                        send "5s"
+                    } else {
+                        # don't care
+                        set cont 0
+                    }
                     incr idle_count
                 }
                 "\\^       a trap" {
@@ -380,10 +455,9 @@ while {$doauto == 1} {
                 "\\0       an iron ball or boulder" {
                     send -s "$dir"
                     expect {
-                        -timeout 1
+                        -timeout 0
                         timeout {
-                            set cont 0
-                            incr idle_count
+                            set cont 1
                         }
                         "You try to move the boulder, but in vain." {
                             set cont 0
@@ -402,7 +476,6 @@ while {$doauto == 1} {
                         "you move the boulder" {
                             set cont 1
                         }
-
                     }
                 }
                 "\\+       a spellbook or a closed door (closed door)" {
@@ -451,9 +524,13 @@ while {$doauto == 1} {
                     expect {
                         "(corridor)" {
                             expect -timeout 0 -gl "--More--" { send " " }
-                            # maybe sometimes travel down corridors?
-                            #send [string toupper "$dir"]
-                            send "G$dir"
+                            # travel down corridors if not searching
+                            if { $searching > 200 } {
+                                send "g"
+                            } else  {
+                                send "G"
+                            }
+                            send "$dir"
                             set cont 1
                             set idle_count 0
                             incr searching
@@ -499,8 +576,12 @@ while {$doauto == 1} {
                         }
 
                         if { $monst == "lichen" } {
-                            send_error "XXX: eating (lichen)\n"
-                            send "ey"
+                            if { !$issatiated } {
+                                send_error "XXX: eating (lichen)\n"
+                                send "ey"
+                            } else {
+                                send_error "XXX: not eating (lichen), too full\n"
+                            }
                         } else {
                             send_error "XXX: not eating $monst corpse!\n"
                         }
@@ -508,9 +589,16 @@ while {$doauto == 1} {
                         send_error "XXX: not eating tin!\n"
                         send "$dir"
                     } else {
-                        send_error "XXX: eating (found food)\n"
-                        send "${dir}ey"
+                        if { !$issatiated } {
+                            send_error "XXX: eating (found food)\n"
+                            send "${dir}ey"
+                        } else {
+                            send_error "XXX: not eating (found food), too full\n"
+                        }
                     }
+
+                    # rescan the output, looking for "Satiated"
+                    exp_continue
                 }
                 "(       a useful item" {
                     send "$dir"
@@ -558,8 +646,10 @@ while {$doauto == 1} {
                 }
                 "\\\[       a suit" {
                     send "${dir}"
-                    # no pickup for now
-                    incr idle_count
+                    set c [pickup "\["]
+                    if { $c != "" } {
+                        send "W$c"
+                    }
                 }
                 -re "e       .*\\(floating eye\\)" {
                     send "$dir"
@@ -574,21 +664,37 @@ while {$doauto == 1} {
                     sleep 0.1
                     expect {
                         -timeout 2
+                        "You miss it\\." {
+                            # nothing
+                        }
+                        "You hit it\\." {
+                            # nothing
+                        }
                         -re "You (kill|destroy) the (.*)!" {
                             set monname $expect_out(2,string)
                             send_error "XXX: killed $monname\n"
                             send "${dir}"
                             exp_continue
                         }
-                        -re "a (\[a-zA-Z ]+) corpse" {
+                        -re "The (\[a-zA-Z \]+) is killed!" {
+                            set monname $expect_out(1,string)
+                            send_error "XXX: something killed $monname\n"
+                            send "${dir}"
+                            exp_continue
+                        }
+                        -re "a (\[a-zA-Z \]+) corpse" {
                             set monst $expect_out(1,string)
 
                             if { [lsearch {
                                 "kobold"
                                 } $monst] < 0 } {
                                 # eat the corpse
-                                send_error "XXX: eating ($monst corpse)\n"
-                                send " ey"
+                                if { !$issatiated } {
+                                    send_error "XXX: eating ($monst corpse)\n"
+                                    send " ey"
+                                } else {
+                                    send_error "XXX: not eating ($monst corpse), too full\n"
+                                }
                             } else {
                                 send_error "XXX: NOT eating slain $monst corpse\n"
                             }
@@ -601,11 +707,10 @@ while {$doauto == 1} {
                     # avoid
                     set cont 0
                     incr idle_count
+                    incr searching
                 }
-                "You die." {
-                    send_error "XXX: well look at that, DEAD again\n"
-                    sleep 1
-                    set isdead 1
+                "Satiated" {
+                    set issatiated 1
                 }
 
                 # "--More--" must come last, to avoid losing
@@ -631,7 +736,7 @@ while {$doauto == 1} {
                 # clear out the More-s
                 expect {
                     -timeout 0
-                    "You die\\." {
+                    -re "You fry to a crisp|You die\\." {
                         set cont 0
                         set isdead 1
                     }
@@ -647,6 +752,10 @@ while {$doauto == 1} {
                 }
             }
 
+            if { $idle_count > 50 } {
+                # might be stuck, change direction
+                set cont 0
+            }
         }
 
         if { $isdead } {
