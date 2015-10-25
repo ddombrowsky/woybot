@@ -101,9 +101,9 @@ set searching 201
 # procs
 #
 
-set tolook_orthag 0
 array set tolook_walls {}
 set prevdir ""
+set cdir_count 0
 
 proc interested {dir} {
     set ret ""
@@ -165,7 +165,7 @@ proc interested {dir} {
                 # rule: only turn into doors
                 if { ($::opposite_dir($dir) == $l) || ([lsearch [list l k j h ] $dir ] < 0) } {
                     send_error "XXX: int: NOT backing up into open door at $l\n"
-                } else {
+                } elseif { $::cdir_count <= 0 } {
                     send_error "XXX: int: found open door at $l\n"
                     set ret $l
                 }
@@ -192,41 +192,52 @@ proc interested {dir} {
             -re "\\.       |\\(corridor\\)" {
                 # Detect when we're searcing along a wall and
                 # find an opening.
-                if { $::tolook_walls($l) > 0 } {
-                    set ret $l
-                    set swhy "after $::tolook_walls($l) wall(s))"
-                } else {
-                    switch $l {
-                        "h" {
-                            if { $::tolook_walls(y) > 0 &&
-                                 $::tolook_walls(b) > 0 } \
-                            {
-                                set ret "h"
-                                set swhy "walls on y,b"
+                if { $::tolook_walls($l) > 2 } {
+                    if { $::opposite_dir($dir) != $l } {
+                        set ret $l
+                        set swhy "after $::tolook_walls($l) wall(s))"
+                    }
+                } elseif { $::cdir_count <= 0 } {
+                    if { [lsearch [list j k] $dir] >= 0 } {
+                        # If we're moving vertically past an
+                        # opening east or west, then be interested.
+                        switch $l {
+                            "h" {
+                                if { $::tolook_walls(y) > 0 &&
+                                     $::tolook_walls(b) > 0 } \
+                                {
+                                    set ret "h"
+                                    set swhy "walls on y,b"
+                                }
+                            }
+                            "l" {
+                                if { $::tolook_walls(u) > 0 &&
+                                     $::tolook_walls(n) > 0 } \
+                                {
+                                    set ret "l"
+                                    set swhy "walls on u,n"
+                                }
                             }
                         }
-                        "l" {
-                            if { $::tolook_walls(u) > 0 &&
-                                 $::tolook_walls(n) > 0 } \
-                            {
-                                set ret "l"
-                                set swhy "walls on u,n"
+                    } elseif { [lsearch [list h l] $dir] >= 0} {
+                        # If we're moving horizontally past an
+                        # opening north or south, then be interested.
+                        switch $l {
+                            "j" {
+                                if { $::tolook_walls(b) > 0 &&
+                                     $::tolook_walls(n) > 0 } \
+                                {
+                                    set ret "j"
+                                    set swhy "walls on b,n"
+                                }
                             }
-                        }
-                        "j" {
-                            if { $::tolook_walls(b) > 0 &&
-                                 $::tolook_walls(n) > 0 } \
-                            {
-                                set ret "j"
-                                set swhy "walls on b,n"
-                            }
-                        }
-                        "k" {
-                            if { $::tolook_walls(y) > 0 &&
-                                 $::tolook_walls(u) > 0 } \
-                            {
-                                set ret "k"
-                                set swhy "walls on y,u"
+                            "k" {
+                                if { $::tolook_walls(y) > 0 &&
+                                     $::tolook_walls(u) > 0 } \
+                                {
+                                    set ret "k"
+                                    set swhy "walls on y,u"
+                                }
                             }
                         }
                     }
@@ -276,6 +287,9 @@ proc interested {dir} {
             set ::tolook_walls($l) 0
         }
         if { $ret != "" } {
+            # to avoid thrashing around in corners, set a
+            # timeout for switching directions.
+            set ::cdir_count 4
             break
         }
     }
@@ -284,7 +298,6 @@ proc interested {dir} {
 }
 
 proc pickup {type} {
-    sleep 0.5
     send -s ","
     expect {
         -timeout 5
@@ -318,7 +331,8 @@ proc move_into_door {dir} {
 # explore
 #
 
-set dirs [list l y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u h j h k h l h b h n j y j u j h j k j l j b j n k y k u k h k j k l k b k n l y l u l h l j l k l b l n b y b u b h b j b k b l b n n y n u n h n j n k n l n b ]
+#set dirs [list h y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u h j h k h l h b h n j y j u j h j k j l j b j n k y k u k h k j k l k b k n l y l u l h l j l k l b l n b y b u b h b j b k b l b n n y n u n h n j n k n l n b ]
+set dirs [list y k u l n j b h j l k]
 
 while {$doauto == 1} {
     foreach dir $dirs {
@@ -339,6 +353,10 @@ while {$doauto == 1} {
             # FIRST: identify the current square
             #
             expect {
+                -re "You fry to a crisp|You die\\." {
+                    set isdead 1
+                    exp_continue
+                }
                 "There is an open door here" {
                     set cont 0
                     switch $dir {
@@ -349,7 +367,7 @@ while {$doauto == 1} {
                     }
                     set timeout 0 ; exp_continue
                 }
-                "You see no objects here" {
+                -re "You (see|feel) no objects here" {
                 }
                 "There is a doorway here" {
                     set timeout 0 ; exp_continue
@@ -360,12 +378,20 @@ while {$doauto == 1} {
                 "There is a staircase up here" {
                     set timeout 0 ; exp_continue
                 }
+                "There is a fountain here" {
+                    set timeout 0 ; exp_continue
+                }
                 "You see" {
                     set timeout 0 ; exp_continue
                 }
                 -gl "--More--" {
                     send " "
+                    set timeout 0 ; exp_continue
                 }
+            }
+
+            if { $isdead } {
+                break
             }
 
             #
@@ -377,7 +403,7 @@ while {$doauto == 1} {
             set timeout 2
             expect {
                 timeout {
-                    send_error "XXX: invalid state when identifying next square"
+                    send_error "XXX: invalid state when identifying next square\n"
                     exit
                 }
                 "Pick an object"
@@ -441,9 +467,11 @@ while {$doauto == 1} {
                     incr idle_count
                 }
                 "(dark part of a room)" {
-                    if { $searching > 400 } {
-                        send_error "XXX: end of corridor? 5 turn SEARCH"
+                    if { $searching > 200 } {
+                        send_error "XXX: end of corridor? 5 turn SEARCH\n"
                         send "5s"
+                        # bump up idle count to force a quick change
+                        incr idle_count 25
                     } else {
                         # don't care
                         set cont 0
@@ -558,6 +586,7 @@ while {$doauto == 1} {
                     send "$dir>"
                     set cont 1
                     set idle_count 0
+                    set searching 0
                 }
                 -re "%       a piece of food \\((\[^)\]+)\\)" {
                     if { $expect_out(1,string) == "corpse" } {
@@ -605,8 +634,10 @@ while {$doauto == 1} {
                 "(       a useful item" {
                     send "$dir"
                     set cont 1
-                    set idle_count 0
-
+                }
+                "*      a gem or rock" {
+                    send "$dir"
+                    set cont 1
                 }
                 "(statue of a" {
                     send "$dir"
@@ -654,10 +685,14 @@ while {$doauto == 1} {
                     }
                 }
                 -re "e       .*\\(floating eye\\)" {
-                    send "$dir"
+                    # avoid (for now)
                     set cont 0
+                    incr idle_count
+                    # autosearch next turn, since finding a
+                    # monster would have cleared it
+                    set searching 300
                 }
-                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       " {
+                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       " {
                     set monst "UNKNOWN"
                     set monname "UNKNOWN"
                     # attack!
@@ -665,11 +700,11 @@ while {$doauto == 1} {
                     send -s "$dir"
                     sleep 0.1
                     expect {
-                        -timeout 2
-                        "You miss it\\." {
+                        -timeout 1
+                        "You miss " {
                             # nothing
                         }
-                        "You hit it\\." {
+                        "You hit " {
                             # nothing
                         }
                         -re "You (kill|destroy) the (.*)!" {
@@ -705,11 +740,13 @@ while {$doauto == 1} {
                     set cont 1
                     set idle_count 0
                 }
-                -re "b       .*\\(acid blob\\)" {
+                -re "b       .*\\(acid blob\\)|e       .*\\(gas spore\\)" {
                     # avoid
                     set cont 0
                     incr idle_count
-                    incr searching
+                    # autosearch next turn, since finding a
+                    # monster would have cleared it
+                    set searching 300
                 }
                 "Satiated" {
                     set issatiated 1
@@ -723,6 +760,10 @@ while {$doauto == 1} {
                 }
             }
 
+            if { $isdead } {
+                break
+            }
+
             #
             # THIRD: identify the surrounding squares
             #
@@ -731,7 +772,7 @@ while {$doauto == 1} {
                 send_error "XXX: interested in direction $ndir\n"
                 set dir $ndir
                 set cont 1
-                set searching 0
+                incr searching -20
             } else {
                 send_error "XXX: idle_count $idle_count searching $searching\n"
 
