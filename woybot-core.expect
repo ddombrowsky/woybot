@@ -117,24 +117,26 @@ proc interested {dir} {
         set ::prevdir $dir
     }
 
-    # to speed things up, alternate between
-    # diagonal and orthoganal searching
-    if { $::tolook_orthag < 2 } {
-        set tolook [list y u b n ]
-    } else {
-        set tolook [list h j k l ]
+    if { $::cdir_count > 0 } {
+        incr ::cdir_count -1
     }
-    incr ::tolook_orthag
-    if { $::tolook_orthag >= 4 } {
-        set ::tolook_orthag 0
-    }
+
+    # For proper corridor detection, diagonals
+    # must be listed first
+    set tolook [list y u b n h j k l]
 
     foreach l $tolook {
         set iswall 0
 
         send -s ";${l}.v"
+
+        set timeout 1
         expect "Pick an object"
         expect {
+            timeout {
+                send_error "XXX: ERROR: didn't find version string\n"
+                exit
+            }
             -re "You fry to a crisp|You die\\." {
                 set ::isdead 1
                 return "";
