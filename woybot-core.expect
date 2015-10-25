@@ -796,7 +796,8 @@ while {$doauto == 1} {
             send "."
             if { $idle_count > 1000 } {
                 # bail...
-                set doauto 0
+                #set doauto 0
+                set searching 200
             }
         }
     }
