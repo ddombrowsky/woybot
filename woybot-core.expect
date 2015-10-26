@@ -641,6 +641,13 @@ while {$doauto == 1} {
                 "There is a fountain here" {
                     set timeout 0 ; exp_continue
                 }
+                "lichen corpse" {
+                    # these corpses don't go bad
+                    if { !$::issatiated } {
+                        send "ey"
+                    }
+                    set timeout 0 ; exp_continue
+                }
                 "You see" {
                     set timeout 0 ; exp_continue
                 }
