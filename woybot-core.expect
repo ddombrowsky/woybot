@@ -545,13 +545,22 @@ proc move_into_door {dir} {
 }
 
 proc after_attack {dir} {
+    set ret 1
     expect {
         -timeout 1
+        timeout {
+            set ret 0
+        }
         "You miss " {
             # nothing
         }
         "You hit " {
             # nothing
+        }
+        "Really attack" {
+            # don't violate paranoid attack
+            send " "
+            set ret 0
         }
         -re "You (kill|destroy) the (.*)!" {
             set monname $expect_out(2,string)
@@ -583,6 +592,7 @@ proc after_attack {dir} {
             }
         }
     }
+    return $ret
 }
 
 #
@@ -724,12 +734,6 @@ while {$doauto == 1} {
                     send_error "XXX: well look at that, DEAD again\n"
                     sleep 1
                     set isdead 1
-                }
-                "Really attack" {
-                    # don't violate paranoid attack
-                    send " "
-                    set cont 0
-                    incr idle_count
                 }
                 "woybot" {
                     # If we're looking at ourselves then we
@@ -983,10 +987,15 @@ while {$doauto == 1} {
                     send -s "$dir"
                     sleep 0.1
 
-                    after_attack $dir
-
-                    set cont 1
-                    set idle_count 0
+                    if { [after_attack $dir] } {
+                        set cont 1
+                        set idle_count 0
+                    } else {
+                        set cont 0
+                        incr idle_count
+                        # pop out to the while, skip "interested" call
+                        continue
+                    }
                 }
                 -re "b       .*\\(acid blob\\)|e       .*\\(gas spore\\)" {
                     if { $idle_count > 5 } {
