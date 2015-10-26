@@ -101,6 +101,110 @@ set searching 201
 # procs
 #
 
+namespace eval scr {
+    variable screen
+}
+
+proc refresh_map {} {
+    send -s "v"
+    expect {
+        timeout { return 0 }
+        "NetHack"
+    }
+    expect *
+
+    # send ctrl-r
+    send \022
+    set termmap ""
+    expect {
+        "NetHack" {
+        }
+        -re ".+" {
+            append termmap "$expect_out(buffer)"
+            send "v"
+            exp_continue
+        }
+    }
+
+    for { set row 0 } { $row < 30 } { incr row } {
+        for { set col 0 } { $col < 90 } { incr col } {
+            set scr::screen($row,$col) " "
+        }
+    }
+
+    # Parse each character, interpreting the
+    # cursor commands to draw the screen.
+    set ltermmap [split $termmap {}]
+    set state 0
+    set cur(row) 0
+    set cur(col) 0
+    set elem ""
+    foreach chr $ltermmap {
+        scan $chr "%c" ord
+
+        switch $state {
+            0 {
+                # esc \033 or 0x1b
+                if { $ord == 0x1b } {
+                    set elem ""
+                    set state 1
+                    continue
+                }
+
+                # ^M (CR) 0x0d
+                if { $ord == 0x0d } {
+                    set cur(col) 0
+                    continue
+                }
+
+                # output char
+                set scr::screen($cur(row),$cur(col)) "$chr"
+                incr cur(col)
+            }
+            1 {
+                switch $chr {
+                    "H" {
+                        # set cursor
+                        if { [regexp {(\d+);(\d+)} $elem m row col] } {
+                            set cur(row) $row
+                            set cur(col) $col
+                        }
+                        set state 0
+                        continue
+                    }
+                    "J" {
+                        # ?
+                        set state 0
+                        continue
+                    }
+                    "K" {
+                        # ?
+                        set state 0
+                        continue
+                    }
+                    "m" {
+                        # ignore color info
+                        set state 0
+                        continue
+                    }
+                }
+                append elem $chr
+            }
+        }
+    }
+
+    # debug screen display:
+    for { set row 0 } { $row < 30 } { incr row } {
+        set line ""
+        for { set col 0 } { $col < 90 } { incr col } {
+            append line $scr::screen($row,$col)
+        }
+        send_error -- "scr:$line\n"
+    }
+
+    return $cur(col) $cur(row)
+}
+
 # When interested in objects, only detect
 # on orthagonal directions.  This is because
 # we can't detect if it's in a doorway and thus
@@ -444,6 +548,9 @@ set dirs [list h y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u
 while {$doauto == 1} {
     foreach dir $dirs {
         send_error "XXX DIRECTION: $dir, search count $searching\n"
+
+        refresh_map
+
         set cont 1
         set ::issatiated 0
         while {$cont == 1} {
