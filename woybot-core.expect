@@ -142,11 +142,15 @@ proc refresh_map {} {
     foreach chr $ltermmap {
         scan $chr "%c" ord
 
+        # debug:
+        #send_error "$ord $chr\n"
+
         switch $state {
             0 {
+                set elem ""
+
                 # esc \033 or 0x1b
                 if { $ord == 0x1b } {
-                    set elem ""
                     set state 1
                     continue
                 }
@@ -163,6 +167,9 @@ proc refresh_map {} {
             }
             1 {
                 switch $chr {
+                    "[" {
+                        continue
+                    }
                     "H" {
                         # set cursor
                         if { [regexp {(\d+);(\d+)} $elem m row col] } {
@@ -173,17 +180,45 @@ proc refresh_map {} {
                         continue
                     }
                     "J" {
-                        # ?
+                        # erase to bottom of screen
                         set state 0
                         continue
                     }
                     "K" {
-                        # ?
+                        # erase to end of line
                         set state 0
                         continue
                     }
                     "m" {
-                        # ignore color info
+                        # color info (ignored)
+                        set state 0
+                        continue
+                    }
+                    "A" {
+                        # cursor up
+                        if { $elem == "" } { set elem 1 }
+                        incr cur(row) "-$elem"
+                        set state 0
+                        continue
+                    }
+                    "B" {
+                        # cursor down
+                        if { $elem == "" } { set elem 1 }
+                        incr cur(row) $elem
+                        set state 0
+                        continue
+                    }
+                    "C" {
+                        # cursor forward
+                        if { $elem == "" } { set elem 1 }
+                        incr cur(col) $elem
+                        set state 0
+                        continue
+                    }
+                    "D" {
+                        # cursor backward
+                        if { $elem == "" } { set elem 1 }
+                        incr cur(col) "-$elem"
                         set state 0
                         continue
                     }
@@ -192,6 +227,9 @@ proc refresh_map {} {
             }
         }
     }
+
+    # in case we're invisible, add the @
+    set scr::screen($cur(row),$cur(col)) "@"
 
     # debug screen display:
     for { set row 0 } { $row < 30 } { incr row } {
