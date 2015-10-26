@@ -394,7 +394,7 @@ proc interested {dir} {
                 if { $::tolook_walls($l) > 2 } {
                     if { $::opposite_dir($dir) != $l } {
                         set ret $l
-                        set swhy "after $::tolook_walls($l) wall(s))"
+                        set swhy "after $::tolook_walls($l) wall(s)"
                     }
                 } elseif { $::cdir_count <= 0 } {
                     if { [lsearch [list j k] $dir] >= 0 } {
@@ -479,7 +479,7 @@ proc interested {dir} {
                 # away (?), so accept it.
             }
             -gl "--More--" {
-                send " "
+                send " v"
                 exp_continue
             }
         }
