@@ -979,7 +979,7 @@ while {$doauto == 1} {
 
                     after_attack $dir
                 }
-                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       |m       " {
+                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       |m       |S       " {
                     set monst "UNKNOWN"
                     set monname "UNKNOWN"
                     # attack!
