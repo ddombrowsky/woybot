@@ -669,7 +669,7 @@ while {$doauto == 1} {
             # SECOND: identify the next square, make
             # move, handle extreme hunger
             #
-            send -s ";$dir."
+            send -s ";"
 
             set timeout 2
             expect {
@@ -678,11 +678,12 @@ while {$doauto == 1} {
                     exit
                 }
                 -gl "--More--" {
-                    send -s " ;$dir."
+                    send -s " ;"
                     exp_continue
                 }
                 "Pick an object"
             }
+            send -s "$dir."
             expect {
                 timeout {
                     # don't care
