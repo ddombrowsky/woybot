@@ -491,9 +491,13 @@ while {$doauto == 1} {
                 "You see" {
                     set timeout 0 ; exp_continue
                 }
+                "You die\\." {
+                    set isdead 1
+                    break
+                }
                 -gl "--More--" {
                     send " "
-                    set timeout 0 ; exp_continue
+                    exp_continue
                 }
             }
 

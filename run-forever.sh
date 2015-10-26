@@ -3,8 +3,9 @@
 n=1
 
 while true ; do
-    if mkdir $n ; then
-        cd $n
+    d=`printf nh%04d $n`
+    if mkdir $d ; then
+        cd $d
         ../run.sh
         cd ..
     fi
