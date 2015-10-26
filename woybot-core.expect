@@ -57,11 +57,12 @@ expect {
         set isnew 1
         exp_continue
     }
-    -re "--More--" {
+    "to NetHack" {
+    }
+    -gl "--More--" {
         send " "
         exp_continue
     }
-    "to NetHack"
 }
 
 if { $isnew } {
