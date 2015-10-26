@@ -169,8 +169,15 @@ proc refresh_map {} {
             1 {
                 switch $chr {
                     "[" {
+                        set state 2
                         continue
                     }
+                    # discard all other escape sequences
+                }
+                set state 0
+            }
+            2 {
+                switch $chr {
                     "H" {
                         # set cursor
                         if { [regexp {(\d+);(\d+)} $elem m row col] } {
