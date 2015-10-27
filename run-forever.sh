@@ -1,12 +1,18 @@
 #!/bin/bash
 
-n=1
+n=0
+d=`dirname $0`
+if [ "$1" == "-l" ] ; then
+    lcl="-l"
+fi
+
+echo $$ > run-forever.pid
 
 while true ; do
-    d=`printf nh%04d $n`
-    if mkdir $d ; then
-        cd $d
-        ../run.sh
+    nh=`printf nh%04d $n`
+    if mkdir $nh ; then
+        cd $nh
+        ../$d/run.sh $lcl
         cd ..
     fi
 

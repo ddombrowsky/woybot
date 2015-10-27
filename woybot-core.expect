@@ -70,8 +70,13 @@ if { $isnew } {
     send "PdrPe"
 }
 
-# 0.05 sec delay every 1 char
-set send_slow {1 0.01}
+if { $islocal } {
+    # 0.01 sec delay every 1 char
+    set send_slow {1 0.01}
+} else {
+    # 0.1 sec delay every 1 char
+    set send_slow {1 0.05}
+}
 
 send -s ";.v"
 expect {
@@ -294,7 +299,7 @@ proc interested {dir} {
 
         send ";"
 
-        set timeout 0.5
+        set timeout 1
         expect {
             timeout {
                 # something's up, try again
@@ -303,6 +308,7 @@ proc interested {dir} {
                 if { $retry > 0 } {
                     exp_continue
                 }
+                send_error "XXX: ERROR: tolook, can't send ';'\n"
             }
             -re "You fry to a crisp|You die\\." {
                 set ::isdead 1
@@ -341,8 +347,8 @@ proc interested {dir} {
                 return "";
             }
             "woybot" {
-                # ignore self, retry
-                return [interested $dir]
+                # ignore self, continue
+                exp_continue
             }
             -re {\[H[a-zA-Z&@:]       } {
                 # monster, we care
@@ -378,7 +384,7 @@ proc interested {dir} {
                 send_error "XXX: int: found staircase down at $l\n"
                 set ret $l
             }
-            -re "\\|       |-       |\\(dark part of a room\\)" {
+            -re "\\|       |-       |\\(dark part of a room\\)|\\(unexplored area\\)" {
                 # wall or dark part of room
                 incr ::tolook_walls($l)
                 send_error "XXX: int: found wall at $l, tolook_walls($l) $::tolook_walls($l)\n"
@@ -388,7 +394,7 @@ proc interested {dir} {
             "^       a trap" {
                 exp_continue
             }
-            -re "\\.       |\\(corridor\\)" {
+            -re "\\.       |corridor\\)" {
                 # Detect when we're searcing along a wall and
                 # find an opening.
                 if { $::tolook_walls($l) > 2 } {
@@ -704,8 +710,11 @@ while {$doauto == 1} {
                 # hunger emergency comes first
                 -re "Weak|Fainting|Fainted|FoodPois" {
                     # place a call!
-                    #send "#py"
-                    send "#pray\ry"
+                    if { $::islocal } {
+                        send "#pray\ry"
+                    } else {
+                        send "#py"
+                    }
                     sleep 0.1
                     expect {
                         -timeout 3
@@ -746,7 +755,7 @@ while {$doauto == 1} {
                     set cont 0
                     incr idle_count
                 }
-                "(dark part of a room)" {
+                -re "\\(dark part of a room\\)|unexplored area" {
                     if { $searching > 200 } {
                         send_error "XXX: end of corridor? 5 turn SEARCH\n"
                         send "15s"
@@ -808,7 +817,7 @@ while {$doauto == 1} {
                     }
                     set searching 0
                 }
-                ".       a doorway or the floor of a room" {
+                -re "\\(floor of a room\\)|\\(broken door\\)|\\(doorway\\)" {
                     send "$dir"
                     set cont 1
                     set idle_count 0
@@ -832,7 +841,7 @@ while {$doauto == 1} {
                 }
                 -re "#       iron bars or a tree" {
                     expect {
-                        "(corridor)" {
+                        "corridor)" {
                             expect -timeout 0 -gl "--More--" { send " " }
                             # travel down corridors if not searching
                             if { $searching > 200 } {
@@ -852,7 +861,7 @@ while {$doauto == 1} {
                         }
                     }
                 }
-                -re "(tame \\w+ called Mountain Lion Cat)" {
+                -re "(tame .*)" {
                     send "$dir"
                     set cont 1
                     set idle_count 0
@@ -1073,8 +1082,14 @@ while {$doauto == 1} {
             set send_slow {1 2}
             set doauto 0
             # try and get the last few messages on the screen
-            expect "Do you want your possessions" {
-                send \020
+            expect {
+                "Do you want your possessions" {
+                    send \020
+                }
+                "explore mode" {
+                    send "no\r"
+                    exp_continue
+                }
             }
             # cycle through the stats
             expect {
