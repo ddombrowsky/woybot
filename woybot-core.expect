@@ -323,6 +323,10 @@ proc interested {dir} {
                 send " "
                 exp_continue
             }
+            "Stop eating" {
+                send " "
+                exp_continue
+            }
             -gl "--More--" {
                 send " "
                 exp_continue
@@ -589,7 +593,10 @@ proc after_attack {dir} {
                 # eat the corpse
                 if { !$::issatiated } {
                     send_error "XXX: eating ($monst corpse)\n"
-                    send " ey"
+                    send " e"
+
+                    confirm_pickup_eat
+
                 } else {
                     send_error "XXX: not eating ($monst corpse), too full\n"
                 }
@@ -601,6 +608,125 @@ proc after_attack {dir} {
     return $ret
 }
 
+# page through --More-- and (end) looking for death and destruction,
+# but mostly to get us back to an input state
+proc pageout {tout} {
+    upvar cont cont
+    expect {
+        -timeout $tout
+        -re "You fry to a crisp|You die\\." {
+            set cont 0
+            set ::isdead 1
+        }
+        "Do you want your possessions" {
+            set cont 0
+            set ::isdead 1
+            send \020
+        }
+        "(end)" {
+            send " "
+            exp_continue
+        }
+        -gl "--More--" {
+            send " "
+            exp_continue
+        }
+    }
+    return 1
+}
+
+proc confirm_pickup_eat {} {
+    set exiteat {
+        expect {
+            "yn" {
+                send "n"
+                exp_continue
+            }
+            "You don't have anything to eat" { }
+            "What do you want to eat" {
+                # nothing for now
+                send " "
+            }
+        }
+        # pick up any remaining food
+        send ","
+        expect {
+            "(end)" {
+                send "% "
+            }
+            " - " {
+                # done
+            }
+            "nothing here" {
+                # done
+            }
+        }
+    }
+
+    if { !$::islocal } {
+        set timeout 2
+    }
+
+    if { !$::issatiated } {
+        expect {
+            "Satiated" {
+                # this should come first, forcing the end
+                # of eating if we become satiated
+                send_error "XXX: NOT eating, became too full\n"
+                eval $exiteat
+                set ::issatiated 1
+            }
+            -re "food ration|lembas wafer|lichen|potato|egg|pear" {
+                send_error "XXX: eating $expect_out(0,string)\n"
+                send "y"
+                exp_continue
+            }
+            "tin" {
+                send "y"
+                set doeat 0
+                expect {
+                    "It contains spinach" {
+                        set doeat 1
+                        exp_continue
+                    }
+                    "smells like" {
+                        # anything else, discard for now
+                        set doeat 0
+                        exp_continue
+                    }
+                    "yn" {
+                        if { $doeat } {
+                            send "y"
+                        } else {
+                            send "n"
+                        }
+                    }
+                    -gl "--More--" {
+                        send " "
+                        exp_continue
+                    }
+                }
+            }
+            "kobold" {
+                send "n"
+                exp_continue
+            }
+            "yn" {
+                send "n"
+                exp_continue
+            }
+            "You don't have anything to eat" { }
+            "What do you want to eat" {
+                # nothing for now
+                send " "
+            }
+        }
+    } else {
+        send_error "XXX: NOT eating, already too full\n"
+        eval $exiteat
+    }
+}
+
 #
 # explore
 #
@@ -608,13 +734,13 @@ proc after_attack {dir} {
 set dirs [list h y u y h y j y k y l y b y n u y u h u j u k u l u b u n h y h u h j h k h l h b h n j y j u j h j k j l j b j n k y k u k h k j k l k b k n l y l u l h l j l k l b l n b y b u b h b j b k b l b n n y n u n h n j n k n l n b ]
 
 while {$doauto == 1} {
+    set ::issatiated 0
     foreach dir $dirs {
         send_error "XXX DIRECTION: $dir, search count $searching\n"
 
         refresh_map
 
         set cont 1
-        set ::issatiated 0
         while {$cont == 1} {
             # if we haven't seen anything interesting in 200
             # iterations, start searching.
@@ -657,11 +783,17 @@ while {$doauto == 1} {
                 "There is a fountain here" {
                     set timeout 0 ; exp_continue
                 }
-                "lichen corpse" {
-                    # these corpses don't go bad
-                    if { !$::issatiated } {
-                        send "ey"
-                    }
+                "Stop eating" {
+                    send " "
+                    exp_continue
+                }
+                -re "lichen corpse|food ration|lembas" {
+                    # these items don't go bad
+                    if { ![pageout 0] } { break }
+                    send "e"
+
+                    confirm_pickup_eat
+
                     set timeout 0 ; exp_continue
                 }
                 "You see" {
@@ -877,9 +1009,13 @@ while {$doauto == 1} {
                     set idle_count 0
                     set searching 0
                 }
-                -re "%       a piece of food \\((\[^)\]+)\\)" {
-                    if { $expect_out(1,string) == "corpse" } {
-                        send -s "$dir"
+                -re "%       a piece of food \\((\[^)\]+)\\)|food ration|lembas wafer" {
+                    set item $expect_out(1,string)
+
+                    send -s "$dir"
+                    if { ![pageout 1] } { break }
+
+                    if { $item == "corpse" } {
                         set monst "unknown"
                         expect {
                             -timeout 5
@@ -897,27 +1033,33 @@ while {$doauto == 1} {
 
                         if { $monst == "lichen" } {
                             if { !$::issatiated } {
-                                send_error "XXX: eating (lichen)\n"
-                                send "ey"
+                                send "e"
+
+                                confirm_pickup_eat
+
+                                # rescan the output, looking for "Satiated"
+                                exp_continue
                             } else {
                                 send_error "XXX: not eating (lichen), too full\n"
                             }
                         } else {
                             send_error "XXX: not eating $monst corpse!\n"
                         }
-                    } elseif { $expect_out(1,string) == "tin" } {
-                        send_error "XXX: not eating tin!\n"
-                        send "$dir"
                     } else {
                         if { !$::issatiated } {
-                            send_error "XXX: eating (found food)\n"
-                            send "${dir}ey"
+                            send "e"
+
+                            confirm_pickup_eat
+
+                            # rescan the output, looking for "Satiated"
+                            exp_continue
                         } else {
                             send_error "XXX: not eating (found food), too full\n"
                         }
                     }
-
-                    # rescan the output, looking for "Satiated"
+                }
+                "Stop eating" {
+                    send " "
                     exp_continue
                 }
                 "(       a useful item" {
@@ -1043,36 +1185,18 @@ while {$doauto == 1} {
                 send_error "XXX: interested in direction $ndir\n"
                 set dir $ndir
                 set cont 1
-                incr searching -20
+                incr searching -2
             } else {
                 send_error "XXX: idle_count $idle_count searching $searching\n"
 
                 # clear out the More-s
-                expect {
-                    -timeout 0
-                    -re "You fry to a crisp|You die\\." {
-                        set cont 0
-                        set isdead 1
-                    }
-                    "Do you want your possessions" {
-                        set cont 0
-                        set isdead 1
-                        send \020
-                    }
-                    -gl "--More--" {
-                        send " "
-                        exp_continue
-                    }
-                }
-
-                if { $isdead } {
-                    set cont 0
-                }
+                if { ![pageout 0] } { break }
             }
 
             if { $idle_count > 50 } {
                 # might be stuck, change direction
                 set cont 0
+                set idle_count 0
             }
         }
 
@@ -1115,14 +1239,10 @@ while {$doauto == 1} {
         }
     }
     if { !$isdead } {
-        send "s"
-        if { $idle_count >= [llength $dirs] } {
-            send "."
-            if { $idle_count > 1000 } {
-                # bail...
-                #set doauto 0
-                set searching 200
-            }
+        if { $idle_count > 1000 } {
+            # bail...
+            #set doauto 0
+            set searching 200
         }
     }
 }

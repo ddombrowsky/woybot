@@ -2,3 +2,4 @@ log
 ttyrecord
 *.log
 *.ttyrec
+*.pid
