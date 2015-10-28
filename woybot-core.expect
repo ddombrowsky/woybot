@@ -17,6 +17,7 @@ if { [lindex $argv 0] == "-l" } {
 }
 if { $islocal == 1 } {
     spawn nethack -u woybot
+    #spawn /usr/games/nethack -D
 } else {
     spawn telnet nethack.csh.rit.edu
 
@@ -81,11 +82,16 @@ if { $islocal } {
 send -s ";.v"
 expect {
     timeout exit
+    "Do you want to keep the save file" {
+        send "n"
+        exp_continue
+    }
     -re "--More--" {
         send " ;.v"
         exp_continue
     }
-    "Unix NetHack"
+    "Unix NetHack" { }
+    "moon" { }
 }
 
 set opposite_dir(h) "l"
@@ -787,6 +793,27 @@ while {$doauto == 1} {
                     send " "
                     exp_continue
                 }
+                -re "There is an altar .*\\((.*)\\) here\\." {
+                    set align $expect_out(1,string)
+
+                    if { ![pageout 0] } { break }
+
+                    send "D"
+                    expect {
+                        "X - Items of unknown" {
+                            expect *
+                            send -s "X , "
+                            if { ![pageout 0] } { break }
+                            send "D"
+                            exp_continue
+                        }
+                        "(end)" {
+                            send " "
+                        }
+                    }
+                    send ",, "
+                    if { ![pageout 0] } { break }
+                }
                 -re "lichen corpse|food ration|lembas" {
                     # these items don't go bad
                     if { ![pageout 0] } { break }
@@ -1061,6 +1088,11 @@ while {$doauto == 1} {
                 "Stop eating" {
                     send " "
                     exp_continue
+                }
+                "_       " {
+                    # handle altar in the next turn
+                    send "$dir"
+                    set cont 1
                 }
                 "(       a useful item" {
                     send "$dir"
