@@ -343,6 +343,11 @@ proc interested {dir} {
                 send " "
                 exp_continue
             }
+            -re "Call a (.*):" {
+                set obj $expect_out(1,string)
+                send "unknown $obj\r"
+                exp_continue
+            }
             "Pick an object"
         }
 
@@ -358,7 +363,7 @@ proc interested {dir} {
                 return "";
             }
             -re "Call a (.*):" {
-                set obj $expect_out(0,string)
+                set obj $expect_out(1,string)
                 send "unknown $obj\r"
                 return "";
             }
@@ -802,6 +807,11 @@ while {$doauto == 1} {
                 }
                 "Stop eating" {
                     send " "
+                    exp_continue
+                }
+                -re "Call a (.*):" {
+                    set obj $expect_out(1,string)
+                    send "unknown $obj\r"
                     exp_continue
                 }
                 -re "There is an altar .*\\((.*)\\) here\\." {
