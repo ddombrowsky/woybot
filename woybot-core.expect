@@ -617,9 +617,7 @@ proc after_attack {dir} {
         -re "(\[a-zA-Z \]+) corpse" {
             set monst $expect_out(1,string)
 
-            if { [lsearch {
-                "kobold"
-                } $monst] < 0 } {
+            if { ![regexp {kobold} $monst] } {
                 # eat the corpse
                 if { !$::issatiated } {
                     send_error "XXX: eating ($monst corpse)\n"
@@ -1322,7 +1320,7 @@ while {$doauto == 1} {
                                 send_error "XXX: not eating (lichen), too full\n"
                             }
                         } else {
-                            send_error "XXX: not eating $monst corpse!\n"
+                            send_error "XXX: not eating old $monst corpse!\n"
                         }
                     } else {
                         if { !$::issatiated } {
@@ -1471,7 +1469,7 @@ while {$doauto == 1} {
 
                     after_attack $dir
                 }
-                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       |m       |S       |p       |M       |a       |u       |l       |v       |K       |'       |n       |C       |q       |Y       " {
+                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       |m       |S       |p       |M       |a       |u       |l       |v       |K       |'       |n       |C       |q       |Y       |y       " {
                     set monst "UNKNOWN"
                     set monname "UNKNOWN"
                     # attack!
