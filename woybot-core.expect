@@ -614,7 +614,7 @@ proc after_attack {dir} {
             send "${dir}"
             exp_continue
         }
-        -re "a (\[a-zA-Z \]+) corpse" {
+        -re "(\[a-zA-Z \]+) corpse" {
             set monst $expect_out(1,string)
 
             if { [lsearch {
@@ -625,7 +625,7 @@ proc after_attack {dir} {
                     send_error "XXX: eating ($monst corpse)\n"
                     send " e"
 
-                    confirm_pickup_eat
+                    confirm_pickup_eat 1
 
                 } else {
                     send_error "XXX: not eating ($monst corpse), too full\n"
@@ -665,7 +665,7 @@ proc pageout {tout} {
     return 1
 }
 
-proc confirm_pickup_eat {} {
+proc confirm_pickup_eat {eat_corpse} {
     set exiteat {
         expect {
             "yn" {
@@ -706,7 +706,19 @@ proc confirm_pickup_eat {} {
                 eval $exiteat
                 set ::issatiated 1
             }
-            -re "food ration|lembas wafer|lichen|potato|egg|pear" {
+            "lichen corpse" {
+                send_error "XXX: eating lichen corpse\n"
+                send "y"
+                exp_continue
+            }
+            "corpse" {
+                if { $eat_corpse } {
+                    send_error "XXX: eating corpse\n"
+                    send "y"
+                    exp_continue
+                }
+            }
+            -re "food ration|lembas wafer|lichen|potato|egg|pear|cookie|candy|pie" {
                 send_error "XXX: eating $expect_out(0,string)\n"
                 send "y"
                 exp_continue
@@ -853,7 +865,7 @@ while {$doauto == 1} {
                     if { ![pageout 0] } { break }
                     send "e"
 
-                    confirm_pickup_eat
+                    confirm_pickup_eat 0
 
                     set timeout 0 ; exp_continue
                 }
@@ -924,6 +936,10 @@ while {$doauto == 1} {
                             set isdead 1
                             set cont 0
                             set doauto 0
+                        }
+                        "Force" {
+                            # wizard mode
+                            send "y"
                         }
                         -gl "--More--" {
                             send " "
@@ -1101,7 +1117,7 @@ while {$doauto == 1} {
                             if { !$::issatiated } {
                                 send "e"
 
-                                confirm_pickup_eat
+                                confirm_pickup_eat 0
 
                                 # rescan the output, looking for "Satiated"
                                 exp_continue
@@ -1115,7 +1131,7 @@ while {$doauto == 1} {
                         if { !$::issatiated } {
                             send "e"
 
-                            confirm_pickup_eat
+                            confirm_pickup_eat 0
 
                             # rescan the output, looking for "Satiated"
                             exp_continue
