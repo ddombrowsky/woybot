@@ -375,12 +375,18 @@ proc interested {dir} {
                 # monster, we care
                 set monst $expect_out(0,string)
                 set tame 0
-                expect -timeout 0 "tame" {
-                    set tame 1
+                expect {
+                    -timeout 0
+                    "tame" {
+                        set tame 1
+                    }
+                    "peaceful" {
+                        set tame 1
+                    }
                 }
 
                 if { $tame } {
-                    send_error "XXX: int: ignoring tame $monst\n"
+                    send_error "XXX: int: ignoring tame/peaceful $monst\n"
                     exp_continue
                 } else {
                     send_error "XXX: int: found monster $monst at $l\n"
@@ -498,6 +504,9 @@ proc interested {dir} {
                 send_error "XXX: int: found some gold at $l\n"
                 set ret [is_orthag $l]
             }
+            "I       a remembered, unseen, creature" {
+                exp_continue
+            }
             "Unix NetHack Version 3.4.3" {
                 # done!
             }
@@ -586,7 +595,11 @@ proc after_attack {dir} {
         }
         "Really attack" {
             # don't violate paranoid attack
-            send " "
+            if { $::islocal } {
+                send " "
+            } else {
+                send "\r"
+            }
             set ret 0
         }
         -re "You (kill|destroy) the (.*)!" {
@@ -1040,6 +1053,11 @@ while {$doauto == 1} {
                             set idle_count 0
                         }
                     }
+                }
+                "I       a remembered, unseen, creature" {
+                    send "$dir"
+                    set cont 1
+                    incr idle_count
                 }
                 -re "(tame .*)" {
                     send "$dir"
