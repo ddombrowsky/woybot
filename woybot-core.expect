@@ -1346,11 +1346,48 @@ while {$doauto == 1} {
                     send "$dir"
                     set cont 1
                 }
+                -re "\\(large box\\)|\\(chest\\)" {
+                    send -s "$dir#loot\r"
+                    # This stores all unknown stuff.
+                    # TODO: this should be intelligent.
+                    expect {
+                        timeout {
+                            send "   "
+                        }
+                        "yn" {
+                            send "y"
+                            exp_continue
+                        }
+                        "seems to be locked" {
+                            send -s "#force\ry"
+                            exp_continue
+                        }
+                        "You succeed in forcing the lock" {
+                            send "#loot\r"
+                            exp_continue
+                        }
+                        "i - Put something into" {
+                            send -s "i"
+                            exp_continue
+                        }
+                        "X - Items of unknown B/C/U status" {
+                            send -s "X , "
+                        }
+                        -gl "--More--" {
+                            send " "
+                            exp_continue
+                        }
+                    }
+                }
                 "(       a useful item" {
                     send "$dir"
                     set cont 1
                 }
-                "*      a gem or rock" {
+                "*       a gem or rock" {
+                    send "$dir"
+                    set cont 1
+                }
+                "+       " {
                     send "$dir"
                     set cont 1
                 }
@@ -1373,7 +1410,10 @@ while {$doauto == 1} {
                             send "\$ "
                             exp_continue
                         }
-                        "gold pieces"
+                        -gl "--More--" {
+                            send " ,"
+                            exp_continue
+                        }
                     }
                     set idle_count 0
                 }
@@ -1383,6 +1423,16 @@ while {$doauto == 1} {
                     incr idle_count
                 }
                 "!       a potion" {
+                    send -s "${dir}"
+                    pickup "!"
+                    incr idle_count
+                }
+                "=       a ring" {
+                    send -s "${dir}"
+                    pickup "!"
+                    incr idle_count
+                }
+                -re "\"       .*amulet\\)" {
                     send -s "${dir}"
                     pickup "!"
                     incr idle_count
@@ -1415,7 +1465,13 @@ while {$doauto == 1} {
 
                     after_attack $dir
                 }
-                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       |m       |S       " {
+                "P       " {
+                    send -s "Za$dir"
+                    sleep 0.1
+
+                    after_attack $dir
+                }
+                -re ":       |d       |x       |r       |F       |o       |k       |Z       |B       |s       |h       |G       |f       |i       |@       |m       |S       |p       |M       |a       |u       |l       |v       |K       |'       |n       |C       |q       |Y       " {
                     set monst "UNKNOWN"
                     set monname "UNKNOWN"
                     # attack!
