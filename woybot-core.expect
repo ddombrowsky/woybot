@@ -325,6 +325,12 @@ proc interested {dir} {
                 set ::isdead 1
                 return "";
             }
+            "Do you want to enter explore mode" {
+                # something happened, and we're dead
+                set ::isdead 1
+                send "no\r"
+                return ""
+            }
             "(end) " {
                 send " "
                 exp_continue
@@ -764,6 +770,11 @@ while {$doauto == 1} {
                 -re "You fry to a crisp|You die\\." {
                     set isdead 1
                     exp_continue
+                }
+                "Do you want to enter explore mode" {
+                    send "no\r"
+                    set isdead 1
+                    break
                 }
                 "There is an open door here" {
                     set cont 0
