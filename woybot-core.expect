@@ -769,6 +769,193 @@ proc confirm_pickup_eat {eat_corpse} {
     }
 }
 
+proc takeoff {what} {
+    set armors ""
+    set allcursed 0
+    set nitems 0
+    set retry 5
+
+    send "T"
+    set timeout 2
+    expect {
+        timeout {
+            if { $retry > 0 } {
+                # Sometimes there is NO message after we take
+                # something off, so we have to retry.
+                incr $retry -1
+                send -s "T"
+                exp_continue
+            } else {
+                send_error "XXX: state error taking off armor\n"
+                exit
+                return
+            }
+        }
+        -re "What do you want to take off\\? \\\[(\[a-zA-Z]+)" {
+            set items [split $expect_out(1,string) {}]
+            if { $nitems != [llength $items] } {
+                set allcursed 0
+                set nitems [llength $items]
+            }
+
+            if { $what != "\*" } {
+                set a $what
+            } else {
+                set a [lindex $items end]
+            }
+            send_error "XXX: taking off $a\n"
+            send -s $a
+            if { ![pageout 1] } { return }
+
+            if { $what == "\*" } {
+                exp_continue
+            }
+        }
+        "You were wearing" {
+            send -s "T"
+            exp_continue
+        }
+        "You finish taking off" {
+            send -s "T"
+            exp_continue
+        }
+        "You can't.  It is cursed" {
+            incr allcursed
+            if { $allcursed < $nitems } {
+                send -s "T"
+                exp_continue
+            }
+        }
+        "Not wearing any armor" {
+            # done
+        }
+
+    }
+}
+
+proc wear {what} {
+
+    send -s "W"
+
+    set timeout 2
+    expect {
+        timeout {
+            send_error "XXX: state error wearing armor\n"
+            exit
+            return
+        }
+        "What do you want to wear"
+    }
+
+    if { $what != "\*" } {
+        send $what
+    } else {
+        set inv [dict create]
+        send -s "?"
+        expect "Armor"
+        expect {
+            -re "(\\w) - (\[-a-zA-Z0-9+ ]+)" {
+                set c $expect_out(1,string)
+                set n $expect_out(2,string)
+                dict set inv $n $c
+                exp_continue
+            }
+            "(end)"
+        }
+
+        set state 0
+        set ordered ""
+        while { $state <= 7 } {
+            foreach iname [dict keys $inv] {
+                set apcmd {
+                    lappend ordered [dict get $inv $iname]
+                    break
+                }
+                switch $state {
+                    0 {
+                        # shirt
+                        if { [regexp -nocase {shirt} $iname] } {
+                            eval $apcmd
+                        }
+                    }
+                    1 {
+                        # armor
+                        if { [regexp -nocase {armor} $iname] ||
+                             [regexp -nocase {mail} $iname] } \
+                        {
+                            eval $apcmd
+                        }
+                    }
+                    2 {
+                        # cloak
+                        if { [regexp -nocase {cloak} $iname] ||
+                             [regexp -nocase {cloth} $iname ] ||
+                             [regexp -nocase {cape} $iname ] ||
+                             [regexp -nocase {cope} $iname ] ||
+                             [regexp -nocase {mantelet} $iname ] ||
+                             [regexp -nocase {pall} $iname ] ||
+                             [regexp -nocase {apron} $iname ] } \
+                        {
+                            eval $apcmd
+                        }
+                    }
+                    4 {
+                        # boots
+                        if { [regexp -nocase {boots} $iname ] ||
+                             [regexp -nocase {shoes} $iname ] } \
+                        {
+                            eval $apcmd
+                        }
+                    }
+                    5 {
+                        # helmet
+                        if { ([regexp -nocase {helm} $iname ] ||
+                              [regexp -nocase {hat} $iname ]  ||
+                              [regexp -nocase {cap} $iname ]) &&
+                            !([regexp -nocase {dunce} $iname ] ||
+                              [regexp -nocase {opposite} $iname ]) } \
+                        {
+                            eval $apcmd
+                        }
+                    }
+                    6 {
+                        # gloves
+                        if { [regexp -nocase {gloves} $iname ] ||
+                             [regexp -nocase {gauntlets} $iname ] } \
+                        {
+                            eval $apcmd
+                        }
+                    }
+                    7 {
+                        # shield
+                        if { [regexp -nocase {shield} $iname ] } {
+                            eval $apcmd
+                        }
+                    }
+                }
+            }
+            incr state
+        }
+
+        foreach c $ordered {
+            send -s "W$c"
+            send_error "XXX: wearing $c"
+            set timeout 1
+            expect {
+                -gl "--More--" {
+                    exp_continue
+                }
+                "You finish" {
+                    exp_continue
+                }
+            }
+        }
+    }
+
+    # useful for checking:
+    #interact timeout 5 return
+}
+
 #
 # explore
 #
@@ -841,6 +1028,7 @@ while {$doauto == 1} {
                 }
                 -re "There is an altar .*\\((.*)\\) here\\." {
                     set align $expect_out(1,string)
+                    set naked 0
 
                     if { ![pageout 0] } { break }
 
@@ -853,12 +1041,21 @@ while {$doauto == 1} {
                             send "D"
                             exp_continue
                         }
+                        "You cannot drop something you are wearing" {
+                            send " "
+                            takeoff *
+                            set naked 1
+                            exp_continue
+                        }
                         "(end)" {
                             send " "
                         }
                     }
                     send ",, "
-                    if { ![pageout 0] } { break }
+                    if { ![pageout 1] } { break }
+                    if { $naked } {
+                        wear *
+                    }
                 }
                 -re "lichen corpse|food ration|lembas" {
                     # these items don't go bad
@@ -1199,7 +1396,8 @@ while {$doauto == 1} {
                     send "${dir}"
                     set c [pickup "\["]
                     if { $c != "" } {
-                        send "W$c"
+                        takeoff *
+                        wear *
                     }
                     incr idle_count
                 }
