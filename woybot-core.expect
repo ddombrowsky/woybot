@@ -339,6 +339,10 @@ proc interested {dir} {
                 send " "
                 exp_continue
             }
+            "Really attack" {
+                send " "
+                exp_continue
+            }
             -gl "--More--" {
                 send " "
                 exp_continue
@@ -347,6 +351,12 @@ proc interested {dir} {
                 set obj $expect_out(1,string)
                 send "unknown $obj\r"
                 exp_continue
+            }
+            "You are carrying too much to get through" {
+                # last move failed, reverse course
+                send_error "XXX: can't pass through, turning around\n"
+                send " "
+                return $::opposite_dir($dir)
             }
             "Pick an object"
         }
@@ -583,7 +593,7 @@ proc move_into_door {dir} {
 proc after_attack {dir} {
     set ret 1
     expect {
-        -timeout 1
+        -timeout 2
         timeout {
             set ret 0
         }
@@ -681,6 +691,10 @@ proc confirm_pickup_eat {eat_corpse} {
         expect {
             "(end)" {
                 send "% "
+                exp_continue
+            }
+            "trouble lifting" {
+                send "n"
             }
             " - " {
                 # done
@@ -691,9 +705,7 @@ proc confirm_pickup_eat {eat_corpse} {
         }
     }
 
-    if { !$::islocal } {
-        set timeout 2
-    }
+    set timeout 2
 
     if { !$::issatiated } {
         expect {
@@ -713,6 +725,9 @@ proc confirm_pickup_eat {eat_corpse} {
                 if { $eat_corpse } {
                     send_error "XXX: eating corpse\n"
                     send "y"
+                    exp_continue
+                } else {
+                    send "n"
                     exp_continue
                 }
             }
@@ -780,12 +795,11 @@ proc takeoff {what} {
             if { $retry > 0 } {
                 # Sometimes there is NO message after we take
                 # something off, so we have to retry.
-                incr $retry -1
+                incr retry -1
                 send -s "T"
                 exp_continue
             } else {
                 send_error "XXX: state error taking off armor\n"
-                exit
                 return
             }
         }
@@ -824,10 +838,16 @@ proc takeoff {what} {
                 exp_continue
             }
         }
+        -gl "--More--" {
+            send " T"
+            exp_continue
+        }
         "Not wearing any armor" {
             # done
         }
-
+        "You don't have that object" {
+            # something went wrong, bail
+        }
     }
 }
 
@@ -1062,6 +1082,7 @@ while {$doauto == 1} {
 
                     confirm_pickup_eat 0
 
+                    if { ![pageout 1] } { break }
                     set timeout 0 ; exp_continue
                 }
                 "You see" {
@@ -1173,6 +1194,7 @@ while {$doauto == 1} {
                 }
                 "\\^       a trap" {
                     set cont 0
+                    incr searching
                     incr idle_count
                 }
                 "\\0       an iron ball or boulder" {
@@ -1208,6 +1230,15 @@ while {$doauto == 1} {
                         "This door is locked." {
                             send \004
                             send "$dir"
+                            exp_continue
+                        }
+                        "have no hands" {
+                            send \004
+                            send "$dir"
+                            send "s"
+                        }
+                        "Your load is too heavy" {
+                            send " DX , "
                         }
                         -re "The door opens|The door resists!" {
                             if { $expect_out(0,string) == "The door opens" } {
@@ -1306,6 +1337,9 @@ while {$doauto == 1} {
                             -re "You see here a (\[a-zA-Z \]+) corpse" {
                                 set monst $expect_out(1,string)
                             }
+                            "There are several objects here" {
+                                # ignore for now
+                            }
                         }
 
                         if { $monst == "lichen" } {
@@ -1369,7 +1403,10 @@ while {$doauto == 1} {
                             exp_continue
                         }
                         "X - Items of unknown B/C/U status" {
-                            send -s "X , "
+                            send -s "dX , "
+                        }
+                        "d - Armor" {
+                            send -s "d , "
                         }
                         -gl "--More--" {
                             send " "
@@ -1497,6 +1534,15 @@ while {$doauto == 1} {
                     # autosearch next turn, since finding a
                     # monster would have cleared it
                     set searching 300
+                }
+                -re "\[a-zA-Z&@]       " {
+                    send_error "XXX: running from unknown monster $expect_out(0,string)\n"
+                    set dir $::opposite_dir($dir)
+                    send $dir
+                    set cont 1
+                    incr idle_count
+                    # skip the "interested" step
+                    continue
                 }
                 "Satiated" {
                     set ::issatiated 1
