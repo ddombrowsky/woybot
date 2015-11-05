@@ -1,0 +1,17 @@
+﻿<Properties StartupItem="cell/cell.csproj">
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Default" />
+  <MonoDevelop.Ide.Workbench ActiveDocument="cell/Cell.cs">
+    <Files>
+      <File FileName="cell/Test.cs" Line="18" Column="1" />
+      <File FileName="cell/Cell.cs" Line="21" Column="23" />
+      <File FileName="cell/Clock.cs" Line="14" Column="1" />
+    </Files>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore>
+      <Breakpoint file="/Users/davidd/src/woybot/csharp/cell/Test.cs" line="18" column="1" />
+      <Breakpoint file="/Users/davidd/src/woybot/csharp/cell/Cell.cs" line="34" column="1" />
+    </BreakpointStore>
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+</Properties>
