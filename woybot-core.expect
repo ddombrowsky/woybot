@@ -12,6 +12,21 @@ set user woybot
 set pass U5ZjIwYzc5OTMyNz
 
 set islocal 0
+set opposite_dir(h) "l"
+set opposite_dir(j) "k"
+set opposite_dir(k) "j"
+set opposite_dir(l) "h"
+set opposite_dir(y) "n"
+set opposite_dir(u) "b"
+set opposite_dir(b) "u"
+set opposite_dir(n) "y"
+
+set doauto 1
+set idle_count 0
+set isdead 0
+set issatiated 0
+set searching 201
+
 if { [lindex $argv 0] == "-l" } {
     set islocal 1
 }
@@ -86,6 +101,9 @@ expect {
         send "n"
         exp_continue
     }
+    "You die\\." {
+        set isdead 1
+    }
     -re "--More--" {
         send " ;.v"
         exp_continue
@@ -93,21 +111,6 @@ expect {
     "Unix NetHack" { }
     "moon" { }
 }
-
-set opposite_dir(h) "l"
-set opposite_dir(j) "k"
-set opposite_dir(k) "j"
-set opposite_dir(l) "h"
-set opposite_dir(y) "n"
-set opposite_dir(u) "b"
-set opposite_dir(b) "u"
-set opposite_dir(n) "y"
-
-set doauto 1
-set idle_count 0
-set isdead 0
-set issatiated 0
-set searching 201
 
 #
 # procs
@@ -1113,6 +1116,10 @@ while {$doauto == 1} {
                 timeout {
                     send_error "XXX: invalid state when identifying next square\n"
                     exit
+                }
+                "Do you want your possessions" {
+                    send \020
+                    set isdead 1
                 }
                 -gl "--More--" {
                     send -s " ;"
