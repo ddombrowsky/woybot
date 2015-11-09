@@ -2,6 +2,7 @@
  *
  */
 using System;
+using System.Collections.Generic;
 
 namespace cell
 {
@@ -12,6 +13,8 @@ namespace cell
             test1();
             System.Console.WriteLine("-----");
             test2();
+            System.Console.WriteLine("-----");
+            test3();
         }
 
         // test 1:
@@ -84,6 +87,26 @@ namespace cell
                 Cell o = outs[i];
                 System.Console.WriteLine("o -> " + o + " (?" + res[i] + ")");
             }
+
+        }
+
+        //
+        // test 3:
+        // test outputs
+        static void test3()
+        {
+            MindClock clk = new MindClock();
+            Cell a = new Cell(clk);
+            Queue<string> q = new Queue<string>();
+            OutputCell c = new OutputCell(q, "hello world", clk);
+
+            a.connect_output(c);
+
+            for(int i = 0; i < 11; i++) {
+                a.upcharge();
+            }
+            System.Console.WriteLine("a -> " + a + " (?1)");
+            System.Console.WriteLine("q -> " + q.Dequeue());
 
         }
     }

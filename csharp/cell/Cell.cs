@@ -29,7 +29,7 @@ public class Cell: IDecayable, IChargeable {
         }
         return m_charge;
     }
-    public int upcharge()
+    public virtual int upcharge()
     {
         m_charge++;
         if(m_charge >= 10) {
