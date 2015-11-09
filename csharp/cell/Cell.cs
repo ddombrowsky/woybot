@@ -63,3 +63,4 @@ public class Cell: IDecayable, IChargeable {
     private int m_charge;
     private IClockDown m_counter; 
 }
+
