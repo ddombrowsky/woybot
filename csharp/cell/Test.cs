@@ -15,6 +15,29 @@ namespace cell
             test2();
             System.Console.WriteLine("-----");
             test3();
+            System.Console.WriteLine("-----");
+            test4();
+        }
+
+        static void paxon(Axon a)
+        {
+            dumper(a.dst);
+        }
+        static void dumper(Sensor s)
+        {
+            s.foreach_out(paxon);
+        }
+
+        static void dumper(Cell c, int level = 0)
+        {
+            if(c == null) {
+                return;
+            }
+            for(int i = 0; i < level; i++) {
+                System.Console.Write(" ");
+            }
+            System.Console.WriteLine(">"+c);
+            c.out_proc(paxon);
         }
 
         // test 1:
@@ -108,6 +131,32 @@ namespace cell
             System.Console.WriteLine("a -> " + a + " (?1)");
             System.Console.WriteLine("q -> " + q.Dequeue());
 
+        }
+
+        //
+        // test 4:
+        // some random connections
+        static void test4()
+        {
+            const int ncells = 1024;
+            Random rnd = new Random();
+
+            MindClock clk = new MindClock();
+            SensorScan ss = new SensorScan(clk);
+
+            Cell[] c = new Cell[ncells];
+
+            for(int i = 0; i < ncells; i++) {
+                c[i] = new Cell(clk);
+            }
+
+            for(int i = 0; i < ncells; i++) {
+                c[i].connect_output(c[rnd.Next(ncells)]);
+            }
+
+            ss.add_cell(c[rnd.Next(ncells)]);
+
+            dumper(ss);
         }
     }
 }

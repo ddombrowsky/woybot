@@ -3,6 +3,8 @@
  */
 using System.Collections.Generic;
 
+public delegate void Proc_Axon(Axon a);
+
 public class Sensor: Cell {
     public Sensor(IClockDown c): base(c)
     {
@@ -21,6 +23,13 @@ public class Sensor: Cell {
     {
         foreach(Axon a in m_outputs) {
             a.fire();
+        }
+    }
+
+    public void foreach_out(Proc_Axon p)
+    {
+        foreach(Axon a in m_outputs) {
+            p(a);
         }
     }
 

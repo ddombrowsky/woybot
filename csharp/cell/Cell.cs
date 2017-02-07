@@ -51,7 +51,15 @@ public class Cell: IDecayable, IChargeable {
 
     public void connect_output(Cell c)
     {
-        m_output.dst = c;
+        // avoid direct loops
+        if(c != m_output.dst) {
+            m_output.dst = c;
+        }
+    }
+
+    public void out_proc(Proc_Axon p)
+    {
+        p(m_output);
     }
 
     public override string ToString()
