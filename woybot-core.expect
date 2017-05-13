@@ -343,7 +343,11 @@ proc interested {dir} {
                 exp_continue
             }
             "Really attack" {
-                send " "
+                if { $::islocal } {
+                    send " "
+                } else {
+                    send "\r"
+                }
                 exp_continue
             }
             -gl "--More--" {
