@@ -29,7 +29,7 @@ public class Cell: IDecayable, IChargeable {
         }
         return m_charge;
     }
-    public int upcharge()
+    public virtual int upcharge()
     {
         m_charge++;
         if(m_charge >= 10) {
@@ -51,7 +51,15 @@ public class Cell: IDecayable, IChargeable {
 
     public void connect_output(Cell c)
     {
-        m_output.dst = c;
+        // avoid direct loops
+        if(c != m_output.dst) {
+            m_output.dst = c;
+        }
+    }
+
+    public void out_proc(Proc_Axon p)
+    {
+        p(m_output);
     }
 
     public override string ToString()
@@ -63,3 +71,4 @@ public class Cell: IDecayable, IChargeable {
     private int m_charge;
     private IClockDown m_counter; 
 }
+

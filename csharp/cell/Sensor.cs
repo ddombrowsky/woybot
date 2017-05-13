@@ -3,11 +3,12 @@
  */
 using System.Collections.Generic;
 
+public delegate void Proc_Axon(Axon a);
+
 public class Sensor: Cell {
-    public Sensor(int n_size, int pos, IClockDown c): base(c)
+    public Sensor(IClockDown c): base(c)
     {
-        m_input = new byte[n_size];
-        m_position = pos;
+        m_outputs = new List<Axon>();
     }
 
     public void add_cell(Cell c)
@@ -18,11 +19,74 @@ public class Sensor: Cell {
         m_outputs.Add(n);
     }
 
-    public void copy_input(byte[] i)
+    public void fire_all()
+    {
+        foreach(Axon a in m_outputs) {
+            a.fire();
+        }
+    }
+
+    public void foreach_out(Proc_Axon p)
+    {
+        foreach(Axon a in m_outputs) {
+            p(a);
+        }
+    }
+
+    protected List<Axon> m_outputs;
+}
+
+/**
+ *
+ * Take sensory input and compare to a set of data of the
+ * same size.  For the bytes that match, fire the
+ * corresponding output.
+ */
+public class SensorCompare: Sensor {
+    public SensorCompare(IClockDown c): base(c)
     {
     }
 
-    private List<Axon> m_outputs;
-    byte[] m_input;
-    int m_position;
+    public void compare_input(byte[] input)
+    {
+        int i;
+        for(i = 0; i < input.Length; i++) {
+            if(input[i] == m_mask[i]) {
+                m_outputs[i].fire();
+            }
+        }
+    }
+
+    public void set_mask(byte[] i, Cell[] outs)
+    {
+        m_mask = i;
+        m_outputs.Clear();
+        foreach(Cell c in outs) {
+            add_cell(c);
+        }
+    }
+
+    byte[] m_mask;
+}
+
+/**
+ *
+ * Scan a set of sensory input looking for a specific byte,
+ * and fire all outputs every time that byte is found.
+ */
+public class SensorScan: Sensor {
+    public SensorScan(IClockDown c): base(c)
+    {
+    }
+
+    public byte m_needle { set; get; }
+
+    public void scan_input(byte[] input)
+    {
+        foreach(byte b in input) {
+            if(b == m_needle) {
+                fire_all();
+            }
+        }
+    }
 }
